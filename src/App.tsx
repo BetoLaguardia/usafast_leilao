@@ -127,8 +127,10 @@ export default function App() {
 
   const handleClientLogout = () => {
     setIsClientAuthenticated(false);
+    setIsAdminAuthenticated(false);
     try {
       localStorage.removeItem('us_client_auth');
+      localStorage.removeItem('us_admin_auth');
     } catch (e) {}
     showToast('Sessão do arrematante encerrada.');
   };
@@ -448,14 +450,14 @@ export default function App() {
               totalAuctionsCount={auctions.length}
             />
 
-            {/* Quick Banner: Only show Admin Panel / Spreadsheet import link to logged in users */}
-            {isAdminAuthenticated || isClientAuthenticated ? (
+            {/* Quick Banner: Only show Admin Panel / Spreadsheet import link to logged in Admins */}
+            {isAdminAuthenticated ? (
               <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-y border-amber-500/20 py-3.5 px-4">
                 <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
                     <List className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="font-semibold text-white">
-                      Sistema consolidado com os maiores leilões americanos e marketplaces.
+                      Modo Administrador: Gestão de leilões, arrematantes e importação de planilhas ativas.
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -464,7 +466,27 @@ export default function App() {
                       className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
                     >
                       <Lock className="w-3.5 h-3.5" />
-                      <span>Painel de Importação & Controle Admin</span>
+                      <span>Acessar Painel Admin</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : isClientAuthenticated ? (
+              <div className="bg-gradient-to-r from-slate-950 via-emerald-950/30 to-slate-950 border-y border-emerald-500/20 py-3 px-4">
+                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      Bem-vindo ao Portal do Arrematante, <strong className="text-white">{currentUser.name || 'Cliente Credenciado'}</strong>! Seu limite de lances está liberado.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setCurrentPage('cliente')}
+                      className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Meu Painel de Cliente</span>
                     </button>
                   </div>
                 </div>
@@ -475,7 +497,7 @@ export default function App() {
                   <div className="flex items-center gap-2 text-slate-300">
                     <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
-                      Área de Leilões dos EUA: Para visualizar lotes completos, laudos de IMEI ou gerenciar planilhas, faça seu login.
+                      Área de Leilões dos EUA: Para visualizar lotes completos, laudos de IMEI e dar lances, faça seu login.
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -596,12 +618,14 @@ export default function App() {
               currentUser={currentUser}
               onLoginSuccess={(user) => {
                 setIsClientAuthenticated(true);
+                setIsAdminAuthenticated(false);
                 setCurrentUser(user);
                 try {
+                  localStorage.removeItem('us_admin_auth');
                   localStorage.setItem('us_client_auth', 'true');
                   localStorage.setItem('us_iphone_client_user', JSON.stringify(user));
                 } catch (e) {}
-                showToast(`Bem-vindo, ${user.name}! Acesso ao catálogo de leilões liberado.`);
+                showToast(`Bem-vindo, ${user.name}! Acesso ao portal liberado.`);
               }}
               onCancel={() => setCurrentPage('home')}
             />
@@ -629,21 +653,13 @@ export default function App() {
                   <Gavel className="w-3.5 h-3.5 text-amber-400" />
                   <span>Terminal de Lances</span>
                 </button>
-                {isAdminAuthenticated || isClientAuthenticated ? (
+                {isAdminAuthenticated && (
                   <button
                     onClick={() => setCurrentPage('admin')}
                     className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Importar Planilha</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setCurrentPage('cliente')}
-                    className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-2 shadow"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>Entrar para Importar</span>
+                    <span>Importar Planilha (Admin)</span>
                   </button>
                 )}
               </div>
@@ -862,8 +878,10 @@ export default function App() {
               currentUser={currentUser}
               onLoginSuccess={(user) => {
                 setIsClientAuthenticated(true);
+                setIsAdminAuthenticated(false);
                 setCurrentUser(user);
                 try {
+                  localStorage.removeItem('us_admin_auth');
                   localStorage.setItem('us_client_auth', 'true');
                   localStorage.setItem('us_iphone_client_user', JSON.stringify(user));
                 } catch (e) {}
