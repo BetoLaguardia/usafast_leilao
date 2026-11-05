@@ -27,6 +27,7 @@ import {
   SlidersHorizontal,
   Package,
   FileSpreadsheet,
+  List,
   Lock,
   Sparkles,
   UserCheck,
@@ -451,12 +452,9 @@ export default function App() {
             <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-y border-amber-500/20 py-3.5 px-4">
               <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-slate-300">
-                    Importador Oficial VERIZON (Excel, CSV e XML):
-                  </span>
-                  <span className="font-semibold text-white hidden md:inline">
-                    Gestão centralizada de lotes, laudos técnicos e lances em tempo real no pregão.
+                  <List className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-white">
+                    Sistema consolidado com os maiores leilões americanos e marketplaces.
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

@@ -39,7 +39,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
             {/* Subtitle */}
             <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed">
-              Arremate paletes e unidades avulsas de iPhones direto das maiores liquidações dos EUA (Apple Surplus, Verizon e AT&T Carrier Returns). Com manifestos completos de IMEI, laudo de 30 pontos e despacho via galpão de Miami.
+              Arremate paletes e unidades avulsas de iPhones direto das maiores liquidações dos EUA (Assurant, Diversos Marketplaces USA, Leilões MACBOOKS, Verizon e AT&T Carrier Returns). Com manifestos completos de IMEI, laudo de 30 pontos e despacho via galpão de Miami.
             </p>
 
             {/* TWO PROMINENT LINKS TO "NOSSO SISTEMA DE LEILÕES" */}
@@ -121,17 +121,17 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <span>Clean IMEI & FMI OFF</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Zero aparelhos bloqueados. Todos consultados na GSMA e aptos para ativação global.
+              Zero aparelhos bloqueados. Todos consultados na GSMA e aptos para ativação global. Caso necessite desbloqueio, temos uma equipe de auxílio.
             </p>
           </div>
 
           <div className="p-3.5 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-1">
             <div className="flex items-center gap-2 text-white font-bold">
               <Layers className="w-4 h-4 text-cyan-400" />
-              <span>Grading Rigoroso A+ / A / B / C</span>
+              <span>Gradeamento Rigoroso A+ / A / B / C / ETC.</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Fotos reais, saúde de bateria discriminada e peças originais Apple certificadas.
+              Trabalhamos com os maiores leilões americanos que certificam a procedência e disponibilizam seus critérios de escalação.
             </p>
           </div>
 
@@ -141,17 +141,17 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <span>Armazém Próprio em Miami</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Consolidação de lotes, inspeção física e despacho aéreo seguro para o Brasil.
+              Consolidação de lotes, inspeção física (Pronta Entrega Testados), e despacho aéreo seguro para o Brasil. Somos os únicos que enviamos para o destino final em apenas 7 dias úteis.
             </p>
           </div>
 
           <div className="p-3.5 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-1">
             <div className="flex items-center gap-2 text-white font-bold">
               <Gavel className="w-4 h-4 text-amber-400" />
-              <span>Sistema Oficial de Arrematação</span>
+              <span>Sistema Oficial de Lances</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Lances automáticos e credenciamento sem exigência de SSN americano para brasileiros.
+              Lances automáticos e credenciamento sem exigência de SSN americano para brasileiros. Somos os únicos que disponibilizamos sistema onde voce mesmo poderá dar os seus lances.
             </p>
           </div>
         </div>

@@ -50,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
             <span className="text-slate-600 hidden sm:inline">|</span>
             <span className="text-slate-400 hidden md:inline">
-              Portal do Importador Brasil · Leilões Oficiais Verizon, Operadoras dos EUA e Apple Surplus
+              Portal do Importador Brasil · Leilões Oficiais Assurant, Marketplaces USA, Macbooks & Verizon
             </span>
             <span className="text-slate-600 hidden lg:inline">|</span>
             <span className="text-slate-400 hidden lg:inline font-mono">

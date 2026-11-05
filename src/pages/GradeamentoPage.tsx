@@ -24,7 +24,7 @@ export const GradeamentoPage: React.FC<GradeamentoPageProps> = ({
           Guia Definitivo de <span className="text-amber-400">Gradeamento de iPhones</span> nos Leilões dos EUA
         </h1>
         <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-          Compreenda com precisão cirúrgica o que significa cada grade estético e funcional utilizado pelas gigantes americanas (Verizon, operadoras dos EUA e Apple Surplus) para arrematar com 100% de confiança e previsibilidade de margem.
+          Compreenda com precisão cirúrgica o que significa cada grade estético e funcional utilizado pelas gigantes americanas (Assurant, Verizon, Marketplaces USA e Leilões MACBOOKS) para arrematar com 100% de confiança e previsibilidade de margem.
         </p>
       </div>
 
