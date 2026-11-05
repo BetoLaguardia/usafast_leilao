@@ -664,7 +664,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                           <td className="p-3.5">
                             <div className="font-mono">
                               <span className="text-base font-black text-amber-400 block">
-                                ${lot.currentBidUsd.toLocaleString()} USD
+                                ${(lot.quantity > 1 && lot.currentBidUsd / lot.quantity >= 80 ? Math.round(lot.currentBidUsd / lot.quantity) : lot.currentBidUsd).toLocaleString()} USD <span className="text-[10px] font-normal text-slate-400">/ un.</span>
                               </span>
                               <span className="text-[10px] text-slate-400 block">
                                 ≈ R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}

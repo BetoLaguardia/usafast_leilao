@@ -44,7 +44,14 @@ export default function App() {
       const saved = localStorage.getItem('us_iphone_auctions_v1');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasAssurant = parsed.some((a: any) => a.sourceType === 'ASSURANT');
+          if (!hasAssurant) {
+            const defaultAssurant = INITIAL_AUCTIONS.filter(a => a.sourceType === 'ASSURANT');
+            return [...defaultAssurant, ...parsed];
+          }
+          return parsed;
+        }
       }
     } catch (e) {
       // ignore

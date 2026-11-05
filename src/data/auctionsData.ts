@@ -563,6 +563,87 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
       { id: 'b-81', bidderName: 'Fix & Sell Campinas', amountUsd: 4400, timestamp: 'Há 15 minutos' },
       { id: 'b-82', bidderName: 'Import Sul Telecom', amountUsd: 4250, timestamp: 'Há 55 minutos' }
     ]
+  },
+  {
+    id: 'asr-lot-default-1',
+    lotNumber: 'ASR-901201',
+    title: 'Lote 10x Apple iPhone 15 Pro Max 256GB Natural Titanium - Grade A (Desbloqueado)',
+    modelFamily: 'iPhone 15 Pro Max',
+    oemBrand: 'Apple',
+    quantity: 10,
+    grade: 'Grade A',
+    primaryStorage: '256GB',
+    colorHighlights: ['Natural Titanium'],
+    batteryHealthRange: '88% - 100% (Verificado)',
+    carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+    imeiStatus: 'Clean ESN / 100% Verificado',
+    auctionHouse: 'Assurant Liquidation Hub',
+    location: 'Assurant Hub - Miami / Orlando',
+    startingBidUsd: 785,
+    currentBidUsd: 825,
+    reservePriceMet: true,
+    estimatedBrazilRetailBrl: 6400,
+    totalBidsCount: 6,
+    endTime: new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString(),
+    imageUrl: '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+    galleryImages: [
+      '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+    ],
+    description: 'Lote Assurant 100% UNLOCKED com acréscimo de +$5 USD/un já aplicado. Aparelhos testados e liberados para todas as operadoras.',
+    diagnosticReport: {
+      faceId: true,
+      trueTone: true,
+      camerasPassed: true,
+      batteryTested: true,
+      cleanEsn: true,
+      mdmFree: true
+    },
+    manifest: [],
+    bidsHistory: [
+      { id: 'b-asr-1', bidderName: 'Licitante Hub', amountUsd: 825, timestamp: 'Há 20 minutos' }
+    ],
+    sourceType: 'ASSURANT'
+  },
+  {
+    id: 'asr-lot-default-2',
+    lotNumber: 'ASR-901202',
+    title: 'Lote 15x Apple iPhone 14 Pro 128GB Space Black - Grade B (Desbloqueado)',
+    modelFamily: 'iPhone 14 Pro',
+    oemBrand: 'Apple',
+    quantity: 15,
+    grade: 'Grade B',
+    primaryStorage: '128GB',
+    colorHighlights: ['Space Black'],
+    batteryHealthRange: '85% - 95% (Verificado)',
+    carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+    imeiStatus: 'Clean ESN / 100% Verificado',
+    auctionHouse: 'Assurant Liquidation Hub',
+    location: 'Assurant Hub - Miami / Orlando',
+    startingBidUsd: 525,
+    currentBidUsd: 555,
+    reservePriceMet: true,
+    estimatedBrazilRetailBrl: 4500,
+    totalBidsCount: 4,
+    endTime: new Date(Date.now() + 1000 * 60 * 60 * 60).toISOString(),
+    imageUrl: '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+    galleryImages: [
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+    ],
+    description: 'Lote Assurant 100% UNLOCKED com acréscimo de +$5 USD/un já aplicado.',
+    diagnosticReport: {
+      faceId: true,
+      trueTone: true,
+      camerasPassed: true,
+      batteryTested: true,
+      cleanEsn: true,
+      mdmFree: true
+    },
+    manifest: [],
+    bidsHistory: [
+      { id: 'b-asr-2', bidderName: 'Licitante Hub', amountUsd: 555, timestamp: 'Há 35 minutos' }
+    ],
+    sourceType: 'ASSURANT'
   }
 ];
 

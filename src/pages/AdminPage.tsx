@@ -1320,8 +1320,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         });
       }
 
+      const targetSourceType = isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE';
       const finalLots = replaceExistingLots
-        ? newLots
+        ? [...newLots, ...auctions.filter(a => a.sourceType !== targetSourceType)]
         : [...newLots, ...auctions];
 
       onUpdateAuctions(finalLots);
