@@ -83,7 +83,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [isLoadingVerizon, setIsLoadingVerizon] = useState(false);
   const [verizonUnitRate, setVerizonUnitRate] = useState<number>(85);
   const [verizonExpandedLot, setVerizonExpandedLot] = useState<string | null>(null);
-  const [replaceExistingLots, setReplaceExistingLots] = useState(true);
+  const [replaceExistingLots, setReplaceExistingLots] = useState(false);
 
   // ----------------------------------------------------
   // ASSURANT AUCTION ENGINE (+ $5 USD PER UNIT ADJUSTMENT)
