@@ -514,6 +514,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                         <img
                           src={lot.imageUrl}
                           alt={lot.title}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                          }}
                           onClick={() => onSelectLot(lot)}
                           className="w-16 h-16 rounded-xl object-cover border border-slate-700 shrink-0 cursor-pointer"
                         />

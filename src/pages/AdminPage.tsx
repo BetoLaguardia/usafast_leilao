@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import { getDeviceImageUrl } from '../utils/deviceImages';
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -1073,18 +1074,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const calculatedStartingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
       const calculatedRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
-      let imageUrl = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
-      if (g.deviceType === 'Apple Watch') {
-        imageUrl = '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
-      } else if (g.deviceType === 'iPad') {
-        imageUrl = g.totalQuantity > 3
-          ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
-          : '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
-      } else if (g.totalQuantity > 3) {
-        imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
-      } else if (/15 pro/i.test(g.modelFamily)) {
-        imageUrl = '/images/iphone_15_pro_natural_titanium_1793849011192.jpg';
-      }
+      const imageUrl = getDeviceImageUrl('Apple', g.modelFamily, g.deviceType);
 
       const title = `Lote ${g.totalQuantity}x Apple ${g.modelFamily} ${g.capacity} - Grade ${g.grade} (Desbloqueado)`;
       const lotNumber = `UF-APL-${String(1000 + idx)}`;
@@ -1245,10 +1235,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
-          let imageUrl = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
-          if (it.deviceType === 'Apple Watch') imageUrl = '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
-          else if (it.deviceType === 'iPad') imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
-          else if (it.availableQuantity > 3) imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
+          const imageUrl = getDeviceImageUrl(it.make, it.model, it.deviceType);
 
           return {
             id: `${meta.prefix.toLowerCase()}-lot-ind-${Date.now()}-${idx}`,

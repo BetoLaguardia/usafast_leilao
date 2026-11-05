@@ -178,13 +178,32 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper to persist auctions
+  // Helper to persist auctions (localStorage + backend /api/auctions for cross-device sync)
   const handleUpdateAuctions = (newAuctions: AuctionLot[]) => {
     setAuctions(newAuctions);
     try {
       localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(newAuctions));
     } catch (e) {}
+    fetch('/api/auctions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auctions: newAuctions })
+    }).catch(() => {});
   };
+
+  useEffect(() => {
+    fetch('/api/auctions')
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data.auctions) && data.auctions.length > 0) {
+          setAuctions(data.auctions);
+          try {
+            localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Real-time live bidding polling effect (connects to PHP or simulated live pool)
   useEffect(() => {
