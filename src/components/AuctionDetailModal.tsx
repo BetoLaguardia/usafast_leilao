@@ -29,7 +29,12 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
   const [bidStatus, setBidStatus] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<string>(lot.imageUrl);
 
-  const gradeInfo = GRADE_EXPLANATIONS[lot.grade];
+  const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || {
+    badgeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
+    textColor: 'text-amber-300',
+    label: lot.grade,
+    description: ''
+  };
 
   const handleBidSubmit = (e: React.FormEvent) => {
     e.preventDefault();
