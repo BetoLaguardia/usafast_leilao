@@ -1184,7 +1184,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         MARKETPLACE_2: { prefix: 'MKT2', house: 'Marketplace 2 Hub', loc: 'Miami Hub - Marketplace 2', label: 'Marketplace 2' },
         MARKETPLACE_3: { prefix: 'MKT3', house: 'Marketplace 3 Hub', loc: 'Miami Hub - Marketplace 3', label: 'Marketplace 3' },
         MACBOOKS: { prefix: 'MAC', house: 'Leilão Macbooks Hub', loc: 'Miami Hub - Apple Macbooks', label: 'Leilão Macbooks' },
-        STOCK_APPLE: { prefix: 'UF', house: 'USAFAST Stock Hub', loc: 'Miami Hub - Armazém W23', label: 'Estoque Apple' }
+        STOCK_APPLE: { prefix: 'UF', house: 'USAFAST Stock Hub', loc: 'Miami Hub - Armazém W23', label: 'Estoque Pronta Entrega' }
       };
       const meta = formatMeta[presetFormat] || formatMeta.STOCK_APPLE;
       let newLots: AuctionLot[] = [];
@@ -2772,7 +2772,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>🍏 Estoque Apple (XML / CSV Stock List)</span>
+                    <span>🍏 Estoque Pronta Entrega (XML / CSV Stock List)</span>
                     <span className="px-1.5 py-0.2 bg-emerald-400 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
                       UNLOCKED ONLY
                     </span>

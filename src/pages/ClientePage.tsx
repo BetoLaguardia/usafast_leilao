@@ -343,7 +343,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   <option value="MARKETPLACE_2">★ Marketplace 2</option>
                   <option value="MARKETPLACE_3">★ Marketplace 3</option>
                   <option value="MACBOOKS">💻 Leilão Macbooks</option>
-                  <option value="STOCK_APPLE">🍏 Estoque Apple</option>
+                  <option value="STOCK_APPLE">🍏 Estoque Pronta Entrega</option>
                 </select>
               </div>
 
