@@ -938,8 +938,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         return;
       }
 
-      // For Phones & Tablets: Must be verified UNLOCKED
-      if (deviceType === 'iPhone' || deviceType === 'iPad') {
+      // For Phones & Tablets: Must be verified UNLOCKED (for Assurant, any non-LOCKED item is approved)
+      if (!allowAllBrands && (deviceType === 'iPhone' || deviceType === 'iPad')) {
         const isConfirmedUnlocked = lockUpper.includes('UNLOCKED') ||
           descUpper.includes('UNLOCKED') ||
           carrierUpper === 'UNL' ||
@@ -1641,7 +1641,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         const isVerizonFormat = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
                                 /verizon/i.test(file.name);
 
-        if (isStockApple || presetFormat === 'STOCK_APPLE') {
+        if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+          setPresetFormat('ASSURANT');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
           setPresetFormat('STOCK_APPLE');
           const { audit } = processStockAppleRows(rawJson);
           showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
@@ -2795,6 +2800,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
             {/* Mode 1: Drag & Drop File Zone */}
             {uploadMode === 'file' ? (
+              <div className="space-y-3">
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-slate-700 hover:border-red-500/80 rounded-2xl p-6 sm:p-10 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/80 transition-all space-y-3"
@@ -2821,6 +2827,27 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   </span>
                 </div>
               </div>
+              {uploadedFileName && (
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-emerald-950/30 border border-emerald-500/40 rounded-xl">
+                  <div className="text-xs text-emerald-200">
+                    <span className="font-bold block">Planilha pronta: {uploadedFileName}</span>
+                    <span className="text-[11px] text-emerald-400">
+                      {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT')
+                        ? `${stockAppleAudit.approvedCount.toLocaleString()} lotes UNLOCKED prontos para carregar`
+                        : `${parsedPreviewRows.length.toLocaleString()} linhas lidas`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyImport}
+                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Importar / Carregar Lotes Agora</span>
+                  </button>
+                </div>
+              )}
+            </div>
             ) : (
               /* Mode 2: Paste Direct from Excel or Paste XML */
               <div className="space-y-3">
