@@ -449,21 +449,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
 
     // 1. Excel XML Spreadsheet 2003 (<Workbook><Worksheet><Table><Row><Cell><Data>...)
-    const rows = xmlDoc.getElementsByTagName('Row');
+    const rowsNs = xmlDoc.getElementsByTagNameNS('*', 'Row');
+    const rows = rowsNs && rowsNs.length > 0 ? rowsNs : xmlDoc.getElementsByTagName('Row');
     if (rows && rows.length > 0) {
       const rawGrid: string[][] = [];
       for (let i = 0; i < rows.length; i++) {
         const rowElem = rows[i];
-        const cells = rowElem.getElementsByTagName('Cell');
+        const cellsNs = rowElem.getElementsByTagNameNS('*', 'Cell');
+        const cells = cellsNs && cellsNs.length > 0 ? cellsNs : rowElem.getElementsByTagName('Cell');
         const rowData: string[] = [];
         for (let j = 0; j < cells.length; j++) {
           const cell = cells[j];
-          const ssIndex = cell.getAttribute('ss:Index');
+          const ssIndex = cell.getAttribute('ss:Index') || cell.getAttribute('Index');
           if (ssIndex) {
             const targetIdx = parseInt(ssIndex, 10) - 1;
             while (rowData.length < targetIdx) rowData.push('');
           }
-          const dataElem = cell.getElementsByTagName('Data')[0];
+          const dataNs = cell.getElementsByTagNameNS('*', 'Data')[0];
+          const dataElem = dataNs || cell.getElementsByTagName('Data')[0];
           const textVal = dataElem ? (dataElem.textContent || '').trim() : (cell.textContent || '').trim();
           rowData.push(textVal);
         }
@@ -473,9 +476,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }
 
       if (rawGrid.length >= 2) {
-        const headers = rawGrid[0];
+        let headerIdx = 0;
+        for (let r = 0; r < Math.min(10, rawGrid.length); r++) {
+          const rowStr = rawGrid[r].map(c => c.toLowerCase()).join(' ');
+          if (
+            (rowStr.includes('item') && (rowStr.includes('warehouse') || rowStr.includes('model') || rowStr.includes('category') || rowStr.includes('lock'))) ||
+            (rowStr.includes('lot') && (rowStr.includes('description') || rowStr.includes('title') || rowStr.includes('model')))
+          ) {
+            headerIdx = r;
+            break;
+          }
+        }
+        const headers = rawGrid[headerIdx];
         const resultRows: any[] = [];
-        for (let r = 1; r < rawGrid.length; r++) {
+        for (let r = headerIdx + 1; r < rawGrid.length; r++) {
           const rowObj: any = {};
           for (let c = 0; c < headers.length; c++) {
             const h = headers[c] || `Coluna_${c + 1}`;

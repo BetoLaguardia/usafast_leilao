@@ -124,9 +124,8 @@ export const ClientePage: React.FC<ClientePageProps> = ({
 
   const handleConfirmBid = () => {
     if (!quickBidLot) return;
-    const minRequired = quickBidLot.currentBidUsd + 25;
-    if (quickBidAmount < minRequired) {
-      alert(`O lance precisa ser no mínimo $${minRequired} USD`);
+    if (!quickBidAmount || quickBidAmount <= 0) {
+      showSuccess('Informe um valor de lance maior que $0 USD.');
       return;
     }
     onPlaceBid(quickBidLot.id, quickBidAmount);
