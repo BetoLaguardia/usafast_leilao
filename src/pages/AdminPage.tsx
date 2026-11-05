@@ -1069,7 +1069,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
     const groupedLots: StockAppleGroupedLot[] = Array.from(groupsMap.values()).map((g, idx) => {
       const avgUnitPrice = g.totalQuantity > 0 ? Math.round(g.unitPriceSum / g.totalQuantity) : 250;
-      const totalCurrentBidUsd = Math.round(avgUnitPrice * g.totalQuantity);
+      const totalCurrentBidUsd = Math.round(avgUnitPrice);
       const calculatedStartingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
       const calculatedRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
@@ -1205,8 +1205,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           imeiStatus: 'Clean ESN / 100% Verificado',
           auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${g.warehouse})` : meta.house,
           location: presetFormat === 'STOCK_APPLE' ? (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
-          startingBidUsd: Math.round(g.calculatedStartingBidUsd + (g.totalQuantity * markupPerUnit)),
-          currentBidUsd: Math.round(g.calculatedCurrentBidUsd + (g.totalQuantity * markupPerUnit)),
+          startingBidUsd: Math.round(g.calculatedStartingBidUsd + markupPerUnit),
+          currentBidUsd: Math.round(g.calculatedCurrentBidUsd + markupPerUnit),
           reservePriceMet: true,
           estimatedBrazilRetailBrl: g.calculatedRetailBrl,
           totalBidsCount: Math.floor(Math.random() * 12) + 2,
@@ -1241,7 +1241,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         // Individual item mode
         newLots = approvedItems.map((it, idx) => {
           const unitPriceWithMarkup = it.listPrice + markupPerUnit;
-          const totalCurrentBidUsd = Math.round(unitPriceWithMarkup * it.availableQuantity);
+          const totalCurrentBidUsd = Math.round(unitPriceWithMarkup);
           const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
