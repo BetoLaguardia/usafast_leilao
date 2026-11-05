@@ -72,12 +72,60 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     functionality: 'Aprovado nos testes de fábrica com certificação de recondicionamento.',
     targetMarket: 'Pode ser vendido com garantia estendida e alto ticket médio.'
   },
-  'A(T) DNA': {
-    label: 'A(T) DNA (Verizon Grade A Testado)',
+  'DNA': {
+    label: 'DNA (Verizon Grade A Testado)',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     borderColor: 'border-emerald-500/50',
     textColor: 'text-emerald-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless A(T) DNA. Totalmente testado, cosmética excelente com laudo de carrier.',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNA. Totalmente testado, cosmética excelente com laudo de carrier.',
+    screenDesc: 'Tela original sem trincos nem quebras. Teste de toque e display 100% aprovados.',
+    housingDesc: 'Carcaça com micro-marcas mínimas de devolução de operadora americana.',
+    batteryMin: '86% a 100% de capacidade original',
+    functionality: '100% funcional no padrão Verizon, Clean ESN e sem bloqueio de ativação.',
+    targetMarket: 'Máxima valorização e segurança para lojistas e importadores.'
+  },
+  'DNB': {
+    label: 'DNB (Verizon Grade B Testado)',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    borderColor: 'border-amber-500/50',
+    textColor: 'text-amber-300',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNB. Totalmente testado com marcas normais de uso.',
+    screenDesc: 'Tela original funcional, micro-arranhões superficiais sem trincos.',
+    housingDesc: 'Pequenos riscos ou descoloração leve nas quinas ou aro.',
+    batteryMin: '82% a 92% de capacidade original',
+    functionality: 'Diagnóstico Verizon aprovado. Clean ESN garantido.',
+    targetMarket: 'Excelente giro rápido de estoque com preço atrativo.'
+  },
+  'DNC': {
+    label: 'DNC (Verizon Grade C Testado)',
+    badgeColor: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+    borderColor: 'border-orange-500/50',
+    textColor: 'text-orange-300',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNC. Totalmente funcional com marcas estéticas evidentes.',
+    screenDesc: 'Tela com arranhões mais visíveis, sem quebra, touch 100% operacional.',
+    housingDesc: 'Marcas de atrito ou desgaste na carcaça.',
+    batteryMin: '80% a 88% de capacidade original',
+    functionality: 'Placa e conectores operacionais, pronto para película ou venda econômica.',
+    targetMarket: 'Ideal para recondicionamento e margem agressiva.'
+  },
+  'DND': {
+    label: 'DND (Verizon Grade D Testado)',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    borderColor: 'border-rose-500/50',
+    textColor: 'text-rose-300',
+    shortDesc: 'Padrão Oficial Verizon Wireless DND. Aparelho funcional com desgaste estético pesado.',
+    screenDesc: 'Arranhões profundos ou desgaste na tela.',
+    housingDesc: 'Desgaste estético severo.',
+    batteryMin: '75% a 85% de capacidade original',
+    functionality: 'Funcional, para técnicos ou recondicionamento completo.',
+    targetMarket: 'Menor custo de entrada por unidade.'
+  },
+  'A(T) DNA': {
+    label: 'DNA (Verizon Grade A Testado)',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    borderColor: 'border-emerald-500/50',
+    textColor: 'text-emerald-300',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNA. Totalmente testado, cosmética excelente com laudo de carrier.',
     screenDesc: 'Tela original sem trincos nem quebras. Teste de toque e display 100% aprovados.',
     housingDesc: 'Carcaça com micro-marcas mínimas de devolução de operadora americana.',
     batteryMin: '86% a 100% de capacidade original',
@@ -85,11 +133,11 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     targetMarket: 'Máxima valorização e segurança para lojistas e importadores.'
   },
   'B(T) DNB': {
-    label: 'B(T) DNB (Verizon Grade B Testado)',
+    label: 'DNB (Verizon Grade B Testado)',
     badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
     borderColor: 'border-amber-500/50',
     textColor: 'text-amber-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless B(T) DNB. Totalmente testado com marcas normais de uso.',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNB. Totalmente testado com marcas normais de uso.',
     screenDesc: 'Tela original funcional, micro-arranhões superficiais sem trincos.',
     housingDesc: 'Pequenos riscos ou descoloração leve nas quinas ou aro.',
     batteryMin: '82% a 92% de capacidade original',
@@ -97,11 +145,11 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     targetMarket: 'Excelente giro rápido de estoque com preço atrativo.'
   },
   'C(T) DNC': {
-    label: 'C(T) DNC (Verizon Grade C Testado)',
+    label: 'DNC (Verizon Grade C Testado)',
     badgeColor: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
     borderColor: 'border-orange-500/50',
     textColor: 'text-orange-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless C(T) DNC. Totalmente funcional com marcas estéticas evidentes.',
+    shortDesc: 'Padrão Oficial Verizon Wireless DNC. Totalmente funcional com marcas estéticas evidentes.',
     screenDesc: 'Tela com arranhões mais visíveis, sem quebra, touch 100% operacional.',
     housingDesc: 'Marcas de atrito ou desgaste na carcaça.',
     batteryMin: '80% a 88% de capacidade original',
@@ -109,11 +157,11 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     targetMarket: 'Ideal para recondicionamento e margem agressiva.'
   },
   'D(T) DND': {
-    label: 'D(T) DND (Verizon Grade D Testado)',
+    label: 'DND (Verizon Grade D Testado)',
     badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     borderColor: 'border-rose-500/50',
     textColor: 'text-rose-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless D(T) DND. Aparelho funcional com desgaste estético pesado.',
+    shortDesc: 'Padrão Oficial Verizon Wireless DND. Aparelho funcional com desgaste estético pesado.',
     screenDesc: 'Arranhões profundos ou desgaste na tela.',
     housingDesc: 'Desgaste estético severo.',
     batteryMin: '75% a 85% de capacidade original',

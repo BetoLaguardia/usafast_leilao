@@ -261,6 +261,7 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regAcceptTerms, setRegAcceptTerms] = useState(true);
+  const [regWhatsappNotify, setRegWhatsappNotify] = useState(true);
 
   // Handle Client Login
   const handleClientLogin = (e: React.FormEvent) => {
@@ -333,6 +334,8 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
       name: regName.trim(),
       email: regEmail.trim(),
       phone: regPhone.trim(),
+      whatsapp: regPhone.trim(),
+      whatsappNotificationEnabled: regWhatsappNotify,
       cpfCnpj: regDoc.trim(),
       biddingLimitUsd: 25000,
       verifiedStatus: true,
@@ -588,6 +591,15 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-400 transition-colors"
                   />
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer text-[11px] text-emerald-400 select-none mt-1.5 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={regWhatsappNotify}
+                    onChange={e => setRegWhatsappNotify(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-slate-700 text-emerald-500 focus:ring-0 bg-slate-950"
+                  />
+                  <span>Receber avisos imediatos de ofertas no WhatsApp (aceitas, recusadas e contra-ofertas)</span>
+                </label>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

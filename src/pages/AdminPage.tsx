@@ -30,7 +30,14 @@ import {
   BarChart3,
   Package,
   ShieldCheck,
-  Lock
+  Lock,
+  Tablet,
+  Watch,
+  CheckSquare,
+  XCircle,
+  Filter,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { AuctionLot, GradeType, SystemUser, AdminOffer } from '../types/auction';
 import { apiService, PhpApiConfig } from '../services/apiService';
@@ -68,7 +75,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'paste'>('file');
-  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'GENERIC'>('VERIZON');
+  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'GENERIC'>('VERIZON');
   const [pasteText, setPasteText] = useState('');
   const [parsedPreviewRows, setParsedPreviewRows] = useState<any[]>([]);
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
@@ -76,6 +83,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [verizonUnitRate, setVerizonUnitRate] = useState<number>(85);
   const [verizonExpandedLot, setVerizonExpandedLot] = useState<string | null>(null);
   const [replaceExistingLots, setReplaceExistingLots] = useState(true);
+
+  // ----------------------------------------------------
+  // ASSURANT AUCTION ENGINE (+ $5 USD PER UNIT ADJUSTMENT)
+  // ----------------------------------------------------
+  const [addAssurantFiveUsd, setAddAssurantFiveUsd] = useState(true);
+  const [assurantMarkupAmount, setAssurantMarkupAmount] = useState<number>(5);
 
   interface VerizonGroupedLot {
     lotNumber: string;
@@ -100,6 +113,81 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   }
 
   const [verizonGroupedLots, setVerizonGroupedLots] = useState<VerizonGroupedLot[]>([]);
+
+  // ----------------------------------------------------
+  // STOCK APPLE XML / CSV ENGINE (IPHONES, IPADS, WATCHES - UNLOCKED ONLY)
+  // ----------------------------------------------------
+  interface StockAppleItem {
+    id: string;
+    itemNumber: string;
+    warehouse: string;
+    category: string;
+    make: string;
+    model: string;
+    modelNumber: string;
+    capacity: string;
+    description: string;
+    carrier: string;
+    lockStatus: string;
+    color: string;
+    grade: string;
+    availableQuantity: number;
+    listPrice: number;
+    currency: string;
+    deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+    status: 'APPROVED' | 'DISCARDED_LOCKED' | 'DISCARDED_NON_APPLE';
+    discardReason?: string;
+  }
+
+  interface StockAppleGroupedLot {
+    groupKey: string;
+    lotNumber: string;
+    title: string;
+    deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+    modelFamily: string;
+    capacity: string;
+    grade: string;
+    warehouse: string;
+    totalQuantity: number;
+    unitPriceUsd: number;
+    calculatedStartingBidUsd: number;
+    calculatedCurrentBidUsd: number;
+    calculatedRetailBrl: number;
+    colorHighlights: string[];
+    manifest: any[];
+    imageUrl: string;
+  }
+
+  interface StockAppleAuditStats {
+    totalRead: number;
+    approvedCount: number;
+    approvedIPhones: number;
+    approvedIPads: number;
+    approvedWatches: number;
+    totalApprovedUnits: number;
+    discardedLockedCount: number;
+    discardedNonAppleCount: number;
+  }
+
+  const [stockAppleItems, setStockAppleItems] = useState<StockAppleItem[]>([]);
+  const [stockAppleGroupedLots, setStockAppleGroupedLots] = useState<StockAppleGroupedLot[]>([]);
+  const [stockAppleAudit, setStockAppleAudit] = useState<StockAppleAuditStats>({
+    totalRead: 0,
+    approvedCount: 0,
+    approvedIPhones: 0,
+    approvedIPads: 0,
+    approvedWatches: 0,
+    totalApprovedUnits: 0,
+    discardedLockedCount: 0,
+    discardedNonAppleCount: 0
+  });
+  const [stockAppleGroupMode, setStockAppleGroupMode] = useState<'grouped' | 'individual'>('grouped');
+  const [stockAppleFilterType, setStockAppleFilterType] = useState<'ALL' | 'IPHONE' | 'IPAD' | 'WATCH' | 'DISCARDED_LOCKED'>('ALL');
+  const [stockAppleSearch, setStockAppleSearch] = useState('');
+  const [stockApplePage, setStockApplePage] = useState(1);
+  const [stockAppleDiscountPercent, setStockAppleDiscountPercent] = useState<number>(15);
+  const [stockAppleMarginPercent, setStockAppleMarginPercent] = useState<number>(55);
+  const [isLoadingStockCsv, setIsLoadingStockCsv] = useState(false);
 
   const [columnMapping, setColumnMapping] = useState({
     lotNumber: '',
@@ -128,22 +216,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   };
 
   // Helper: map grade exclusively for VERIZON auctions
-  // "quero que quando for importar o leilao verizon, troque as grades para A(T) DNA , B(T) DNB , C(T) DNC e assim por diante. Atencao so no verizon entendeu?"
+  // "tire o grade B+(T), A+(T), C+(T) nao deixe aparecer altere tudo para DNA, DNB, DNC , DND isso só no verizon"
   const mapVerizonGrade = (raw: string): GradeType => {
     const g = String(raw || '').trim().toUpperCase();
-    if (g.includes('A(T)') || g.includes('DNA') || g.includes('A+') || (g.includes('A') && !g.includes('B') && !g.includes('C') && !g.includes('D'))) {
-      return 'A(T) DNA';
+    if (g.includes('DND') || g.includes('D(T)') || g.includes('D+(T)') || (g.includes('D') && !g.includes('DNA') && !g.includes('DNB') && !g.includes('DNC'))) {
+      return 'DND';
     }
-    if (g.includes('B(T)') || g.includes('DNB') || g.includes('B') || g.includes('A/B')) {
-      return 'B(T) DNB';
+    if (g.includes('DNC') || g.includes('C(T)') || g.includes('C+(T)') || g.includes('C+') || g.includes('C')) {
+      return 'DNC';
     }
-    if (g.includes('C(T)') || g.includes('DNC') || g.includes('C')) {
-      return 'C(T) DNC';
+    if (g.includes('DNB') || g.includes('B(T)') || g.includes('B+(T)') || g.includes('B+') || g.includes('B') || g.includes('A/B')) {
+      return 'DNB';
     }
-    if (g.includes('D(T)') || g.includes('DND') || g.includes('D')) {
-      return 'D(T) DND';
+    if (g.includes('DNA') || g.includes('A(T)') || g.includes('A+(T)') || g.includes('A+') || g.includes('A')) {
+      return 'DNA';
     }
-    return 'C(T) DNC';
+    return 'DNC';
   };
 
   // Helper: parse date and time from Verizon CSV
@@ -261,8 +349,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
 
     const parsedGroupedLots: VerizonGroupedLot[] = Array.from(groups.values()).map(g => {
-      // Transform grade ONLY for Verizon to A(T) DNA, B(T) DNB, C(T) DNC, D(T) DND
+      // Transform grade ONLY for Verizon to DNA, DNB, DNC, DND (never A+(T), B+(T), C+(T))
       const mappedGrade = mapVerizonGrade(g.gradeRaw);
+
+      // Clean title for Verizon to never show B+(T), A+(T), C+(T)
+      const cleanTitle = g.title
+        .replace(/\bA\+\(T\)\b/gi, 'DNA')
+        .replace(/\bB\+\(T\)\b/gi, 'DNB')
+        .replace(/\bC\+\(T\)\b/gi, 'DNC')
+        .replace(/\bD\+\(T\)\b/gi, 'DND')
+        .replace(/\bA\(T\)\s*DNA\b/gi, 'DNA')
+        .replace(/\bB\(T\)\s*DNB\b/gi, 'DNB')
+        .replace(/\bC\(T\)\s*DNC\b/gi, 'DNC')
+        .replace(/\bD\(T\)\s*DND\b/gi, 'DND')
+        .replace(/\bA\(T\)\b/gi, 'DNA')
+        .replace(/\bB\(T\)\b/gi, 'DNB')
+        .replace(/\bC\(T\)\b/gi, 'DNC')
+        .replace(/\bD\(T\)\b/gi, 'DND');
+
       const isPremium = /fold|ultra|pro max/i.test(g.primaryModel);
       const isBudget = /a1|a2|a0/i.test(g.primaryModel);
       const perUnit = isPremium ? unitRate * 1.6 : isBudget ? unitRate * 0.6 : unitRate;
@@ -272,7 +376,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
       return {
         lotNumber: g.lotNumber,
-        title: g.title,
+        title: cleanTitle,
         oem: g.oem,
         primaryModel: g.primaryModel,
         gradeRaw: g.gradeRaw,
@@ -383,8 +487,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }
     }
 
-    // 2. Element-based lists (<listing>, <lot>, <item>, <device>, <row>, <auction>)
-    const candidateTags = ['listing', 'lot', 'item', 'row', 'record', 'product', 'device', 'auction', 'entry'];
+    // 2. Element-based lists (<listing>, <lot>, <item>, <stockitem>, <device>, <row>, <auction>)
+    const candidateTags = ['listing', 'lot', 'item', 'stockitem', 'stock_item', 'stock', 'deviceitem', 'inventoryitem', 'row', 'record', 'product', 'device', 'auction', 'entry'];
     for (const tag of candidateTags) {
       const elements = xmlDoc.getElementsByTagName(tag);
       if (elements && elements.length > 0) {
@@ -429,6 +533,775 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
 
     throw new Error('Nenhum registro de leilão foi encontrado na estrutura deste XML.');
+  };
+
+  // ----------------------------------------------------
+  // HELPERS FOR STOCK FEED & NORMALIZATION
+  // ----------------------------------------------------
+  const normalizeField = (row: any, ...keys: string[]): string => {
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+        return String(row[k]).trim();
+      }
+    }
+    // Case/whitespace-insensitive lookup
+    const rowKeys = Object.keys(row);
+    for (const k of keys) {
+      const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const found = rowKeys.find(rk => rk.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanK);
+      if (found && row[found] !== undefined && row[found] !== null && String(row[found]).trim() !== '') {
+        return String(row[found]).trim();
+      }
+    }
+    return '';
+  };
+
+  const parsePrice = (rawVal: any): number => {
+    if (typeof rawVal === 'number') {
+      if (rawVal > 10000 && Number.isInteger(rawVal)) {
+        return Math.round((rawVal / 100) * 100) / 100;
+      }
+      return rawVal;
+    }
+    const str = String(rawVal || '').replace(/[^0-9.,]/g, '').trim();
+    if (!str) return 0;
+    if (str.includes(',') && !str.includes('.')) {
+      const num = parseFloat(str.replace(',', '.'));
+      return isNaN(num) ? 0 : num;
+    }
+    if (str.includes(',') && str.includes('.')) {
+      const num = parseFloat(str.replace(/,/g, ''));
+      return isNaN(num) ? 0 : num;
+    }
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const parseCsvText = (text: string): any[] => {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return [];
+
+    let headerIndex = -1;
+    let delimiter = ';';
+    for (let i = 0; i < Math.min(10, lines.length); i++) {
+      const line = lines[i];
+      const semiCount = (line.match(/;/g) || []).length;
+      const commaCount = (line.match(/,/g) || []).length;
+      const tabCount = (line.match(/\t/g) || []).length;
+      const delim = semiCount >= commaCount && semiCount >= tabCount ? ';' : tabCount > commaCount ? '\t' : ',';
+      
+      const parts = line.split(delim).map(p => p.trim().toLowerCase());
+      if (parts.some(p => p.includes('item') || p.includes('lot') || p.includes('model') || p.includes('category') || p.includes('warehouse'))) {
+        headerIndex = i;
+        delimiter = delim;
+        break;
+      }
+    }
+
+    if (headerIndex === -1) {
+      headerIndex = 0;
+    }
+
+    const rawHeaders = lines[headerIndex].split(delimiter).map(h => h.replace(/^["']|["']$/g, '').trim());
+    const rows: any[] = [];
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+      const rawLine = lines[i];
+      if (!rawLine.trim()) continue;
+      const cols = rawLine.split(delimiter).map(c => c.replace(/^["']|["']$/g, '').trim());
+      if (cols.length === 0 || cols.every(c => !c)) continue;
+      const obj: any = {};
+      rawHeaders.forEach((h, idx) => {
+        obj[h] = cols[idx] !== undefined ? cols[idx] : '';
+      });
+      rows.push(obj);
+    }
+    return rows;
+  };
+
+  // Sample XML representing the exact schema of Stock List
+  const SAMPLE_STOCK_APPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<StockList lastUpdated="11/05/2026 04:11AM CST">
+  <Item>
+    <ItemNumber>2610726</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Tablet</Category>
+    <Make>Apple</Make>
+    <Model>iPad (10th Gen)</Model>
+    <ModelNumber>A2757</ModelNumber>
+    <Capacity>64GB</Capacity>
+    <Description>Apple / iPad (10th Gen) / A2757 / 10.9 / 64GB / GSM / Silver / ATT / UNLOCKED / DLS C</Description>
+    <Carrier>ATT</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Silver</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>5</AvailableQuantity>
+    <ListPrice>213.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2397541</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Tablet</Category>
+    <Make>Apple</Make>
+    <Model>iPad (10th Gen)</Model>
+    <ModelNumber>A2696</ModelNumber>
+    <Capacity>64GB</Capacity>
+    <Description>Apple / iPad (10th Gen) / A2696 / 10.9 / 64GB / WIFI / Silver / OTH / LOCKED / DLS C</Description>
+    <Carrier>OTH</Carrier>
+    <LockStatus>LOCKED</LockStatus>
+    <Color>Silver</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>2</AvailableQuantity>
+    <ListPrice>231.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2610092</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Tablet</Category>
+    <Make>Apple</Make>
+    <Model>iPad (A16)</Model>
+    <ModelNumber>A3355</ModelNumber>
+    <Capacity>128GB</Capacity>
+    <Description>Apple / iPad (A16) / A3355 / 128GB / GSM / Blue / ATT / UNLOCKED / DLS A+</Description>
+    <Carrier>ATT</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Blue</Color>
+    <Grade>DLS A+</Grade>
+    <AvailableQuantity>12</AvailableQuantity>
+    <ListPrice>424.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2041332</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 11</Model>
+    <ModelNumber>A2111</ModelNumber>
+    <Capacity>64GB</Capacity>
+    <Description>Apple / iPhone 11 / A2111 / 64GB / GSM / Black / UNL / UNLOCKED / DLS A</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Black</Color>
+    <Grade>DLS A</Grade>
+    <AvailableQuantity>1</AvailableQuantity>
+    <ListPrice>124.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2041333</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 11</Model>
+    <ModelNumber>A2111</ModelNumber>
+    <Capacity>64GB</Capacity>
+    <Description>Apple / iPhone 11 / A2111 / 64GB / GSM / Black / UNL / UNLOCKED / DLS A+</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Black</Color>
+    <Grade>DLS A+</Grade>
+    <AvailableQuantity>46</AvailableQuantity>
+    <ListPrice>134.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2810144</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 15 Pro</Model>
+    <ModelNumber>A2848</ModelNumber>
+    <Capacity>128GB</Capacity>
+    <Description>Apple / iPhone 15 Pro / A2848 / 128GB / 5G / Natural Titanium / UNL / UNLOCKED / DLS A+</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Natural Titanium</Color>
+    <Grade>DLS A+</Grade>
+    <AvailableQuantity>15</AvailableQuantity>
+    <ListPrice>610.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2810199</ItemNumber>
+    <Warehouse>W23-ATT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 16 Pro Max</Model>
+    <ModelNumber>A3084</ModelNumber>
+    <Capacity>256GB</Capacity>
+    <Description>Apple / iPhone 16 Pro Max / A3084 / 256GB / 5G / Desert Titanium / UNL / UNLOCKED / DLS AA+</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Desert Titanium</Color>
+    <Grade>DLS AA+</Grade>
+    <AvailableQuantity>20</AvailableQuantity>
+    <ListPrice>890.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2392318</ItemNumber>
+    <Warehouse>W12-GGL</Warehouse>
+    <Category>Wearables</Category>
+    <Make>Apple</Make>
+    <Model>Watch SE (2nd Gen)</Model>
+    <ModelNumber>A2726</ModelNumber>
+    <Capacity>32GB</Capacity>
+    <Description>Apple / Watch SE (2nd Gen) / A2726 / 32GB / 40mm / Aluminum / X / GSM / Starlight / ATT / DLS B</Description>
+    <Carrier>ATT</Carrier>
+    <LockStatus></LockStatus>
+    <Color>Starlight</Color>
+    <Grade>DLS B</Grade>
+    <AvailableQuantity>1</AvailableQuantity>
+    <ListPrice>75.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2568033</ItemNumber>
+    <Warehouse>W12-GGL</Warehouse>
+    <Category>Wearables</Category>
+    <Make>Apple</Make>
+    <Model>Watch SE 3</Model>
+    <ModelNumber>A3324</ModelNumber>
+    <Capacity>64GB</Capacity>
+    <Description>Apple / Watch SE 3 / A3324 / 64GB / 40mm / Aluminum / X / WIFI / Midnight / OTH / DLS B</Description>
+    <Carrier>OTH</Carrier>
+    <LockStatus></LockStatus>
+    <Color>Midnight</Color>
+    <Grade>DLS B</Grade>
+    <AvailableQuantity>1</AvailableQuantity>
+    <ListPrice>108.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2599001</ItemNumber>
+    <Warehouse>W12-GGL</Warehouse>
+    <Category>Phones</Category>
+    <Make>Samsung</Make>
+    <Model>Galaxy S24 Ultra</Model>
+    <ModelNumber>SM-S928U</ModelNumber>
+    <Capacity>256GB</Capacity>
+    <Description>Samsung Galaxy S24 Ultra Titanium UNLOCKED</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Titanium</Color>
+    <Grade>A</Grade>
+    <AvailableQuantity>5</AvailableQuantity>
+    <ListPrice>650.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+</StockList>`;
+
+  // ----------------------------------------------------
+  // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
+  // ----------------------------------------------------
+  const processStockAppleRows = (rawRows: any[]) => {
+    let approvedIPhones = 0;
+    let approvedIPads = 0;
+    let approvedWatches = 0;
+    let discardedLockedCount = 0;
+    let discardedNonAppleCount = 0;
+    let totalApprovedUnits = 0;
+
+    const processedItems: StockAppleItem[] = [];
+
+    rawRows.forEach((row, idx) => {
+      const itemNumber = normalizeField(row, 'Item #', 'Item#', 'ItemNumber', 'item_number', 'item-number', 'Item', 'id') || `ITM-${100000 + idx}`;
+      const warehouse = normalizeField(row, 'Warehouse', 'warehouse', 'Armazem') || 'W23-ATT';
+      const category = normalizeField(row, 'Category', 'category', 'Categoria') || '';
+      const make = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM') || 'Apple';
+      const model = normalizeField(row, 'Model', 'model', 'Modelo') || '';
+      const modelNumber = normalizeField(row, 'Model Number', 'ModelNumber', 'model_number', 'PartNumber', 'part_number') || '';
+      const capacity = normalizeField(row, 'Capacity', 'capacity', 'Capacidade', 'Storage', 'storage') || '128GB';
+      const description = normalizeField(row, 'Description', 'description', 'Descricao') || '';
+      const carrier = normalizeField(row, 'Carrier', 'carrier', 'Operadora') || '';
+      const lockStatus = normalizeField(row, 'Lock Status', 'LockStatus', 'lock_status', 'lock-status', 'StatusBloqueio') || '';
+      const color = normalizeField(row, 'Color', 'color', 'Cor') || 'Space Gray';
+      const grade = normalizeField(row, 'Grade', 'grade', 'Condicao') || 'DLS A';
+      
+      const qtyRaw = normalizeField(row, 'Available Quantity', 'AvailableQuantity', 'Quantity', 'qty', 'Quantidade') || '1';
+      const availableQuantity = Math.max(1, parseInt(String(qtyRaw).replace(/[^0-9]/g, '') || '1', 10) || 1);
+      
+      const priceRaw = normalizeField(row, 'List Price', 'ListPrice', 'list_price', 'Price', 'price', 'Preco') || '0';
+      const listPrice = parsePrice(priceRaw);
+      const currency = normalizeField(row, 'Currency', 'currency', 'Moeda') || 'USD';
+
+      // 1. BRAND CHECK: Must be Apple (or model name contains iPhone, iPad, Apple Watch, or Watch)
+      const isAppleMake = make.trim().toLowerCase() === 'apple' ||
+        /iphone|ipad|apple watch|\bwatch\b/i.test(model) ||
+        /apple/i.test(description);
+
+      if (!isAppleMake) {
+        discardedNonAppleCount++;
+        processedItems.push({
+          id: `stock-item-${idx}`,
+          itemNumber,
+          warehouse,
+          category,
+          make,
+          model,
+          modelNumber,
+          capacity,
+          description,
+          carrier,
+          lockStatus,
+          color,
+          grade,
+          availableQuantity,
+          listPrice,
+          currency,
+          deviceType: 'iPhone',
+          status: 'DISCARDED_NON_APPLE',
+          discardReason: `Fabricante "${make}" não é Apple`
+        });
+        return;
+      }
+
+      // 2. DEVICE CLASSIFICATION: iPhone, iPad, Apple Watch ONLY
+      let deviceType: 'iPhone' | 'iPad' | 'Apple Watch' | null = null;
+      const catLower = category.trim().toLowerCase();
+      const modelLower = model.trim().toLowerCase();
+
+      if (modelLower.includes('iphone') || catLower === 'phones') {
+        deviceType = 'iPhone';
+      } else if (modelLower.includes('ipad') || catLower === 'tablet') {
+        deviceType = 'iPad';
+      } else if (modelLower.includes('watch') || catLower === 'wearables') {
+        deviceType = 'Apple Watch';
+      }
+
+      if (!deviceType) {
+        discardedNonAppleCount++;
+        processedItems.push({
+          id: `stock-item-${idx}`,
+          itemNumber,
+          warehouse,
+          category,
+          make,
+          model,
+          modelNumber,
+          capacity,
+          description,
+          carrier,
+          lockStatus,
+          color,
+          grade,
+          availableQuantity,
+          listPrice,
+          currency,
+          deviceType: 'iPhone',
+          status: 'DISCARDED_NON_APPLE',
+          discardReason: 'Categoria não é iPhone, iPad ou Apple Watch'
+        });
+        return;
+      }
+
+      // 3. LOCK STATUS CHECK: ONLY UNLOCKED!
+      // "importará apenas os iphones, applewatches, Ipads desbloqueados entendeu?"
+      const lockUpper = lockStatus.trim().toUpperCase();
+      const descUpper = description.trim().toUpperCase();
+      const carrierUpper = carrier.trim().toUpperCase();
+
+      // Explicit LOCKED check
+      const isExplicitlyLocked = lockUpper === 'LOCKED' ||
+        (lockUpper.includes('LOCKED') && !lockUpper.includes('UNLOCKED')) ||
+        (descUpper.includes('LOCKED') && !descUpper.includes('UNLOCKED'));
+
+      if (isExplicitlyLocked) {
+        discardedLockedCount++;
+        processedItems.push({
+          id: `stock-item-${idx}`,
+          itemNumber,
+          warehouse,
+          category,
+          make,
+          model,
+          modelNumber,
+          capacity,
+          description,
+          carrier,
+          lockStatus,
+          color,
+          grade,
+          availableQuantity,
+          listPrice,
+          currency,
+          deviceType,
+          status: 'DISCARDED_LOCKED',
+          discardReason: 'Aparelho bloqueado (LOCKED detectado no status ou descrição)'
+        });
+        return;
+      }
+
+      // For Phones & Tablets: Must be verified UNLOCKED
+      if (deviceType === 'iPhone' || deviceType === 'iPad') {
+        const isConfirmedUnlocked = lockUpper.includes('UNLOCKED') ||
+          descUpper.includes('UNLOCKED') ||
+          carrierUpper === 'UNL' ||
+          carrierUpper === 'UNLOCKED';
+
+        if (!isConfirmedUnlocked) {
+          discardedLockedCount++;
+          processedItems.push({
+            id: `stock-item-${idx}`,
+            itemNumber,
+            warehouse,
+            category,
+            make,
+            model,
+            modelNumber,
+            capacity,
+            description,
+            carrier,
+            lockStatus,
+            color,
+            grade,
+            availableQuantity,
+            listPrice,
+            currency,
+            deviceType,
+            status: 'DISCARDED_LOCKED',
+            discardReason: 'Aparelho não possui status UNLOCKED confirmado'
+          });
+          return;
+        }
+      }
+
+      // Approved as UNLOCKED!
+      if (deviceType === 'iPhone') approvedIPhones++;
+      else if (deviceType === 'iPad') approvedIPads++;
+      else if (deviceType === 'Apple Watch') approvedWatches++;
+      totalApprovedUnits += availableQuantity;
+
+      processedItems.push({
+        id: `stock-item-${idx}`,
+        itemNumber,
+        warehouse,
+        category,
+        make,
+        model,
+        modelNumber,
+        capacity,
+        description,
+        carrier,
+        lockStatus: lockStatus || 'UNLOCKED',
+        color,
+        grade,
+        availableQuantity,
+        listPrice,
+        currency,
+        deviceType,
+        status: 'APPROVED'
+      });
+    });
+
+    const audit: StockAppleAuditStats = {
+      totalRead: rawRows.length,
+      approvedCount: approvedIPhones + approvedIPads + approvedWatches,
+      approvedIPhones,
+      approvedIPads,
+      approvedWatches,
+      totalApprovedUnits,
+      discardedLockedCount,
+      discardedNonAppleCount
+    };
+
+    setStockAppleAudit(audit);
+    setStockAppleItems(processedItems);
+
+    // Group approved items by Model + Capacity + Grade
+    const approvedOnly = processedItems.filter(i => i.status === 'APPROVED');
+    const groupsMap = new Map<string, {
+      groupKey: string;
+      deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+      modelFamily: string;
+      capacity: string;
+      grade: string;
+      warehouse: string;
+      totalQuantity: number;
+      unitPriceSum: number;
+      colors: Set<string>;
+      items: StockAppleItem[];
+    }>();
+
+    approvedOnly.forEach(item => {
+      const key = `${item.model}___${item.capacity}___${item.grade}`;
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          groupKey: key,
+          deviceType: item.deviceType,
+          modelFamily: item.model,
+          capacity: item.capacity,
+          grade: item.grade,
+          warehouse: item.warehouse,
+          totalQuantity: 0,
+          unitPriceSum: 0,
+          colors: new Set<string>(),
+          items: []
+        });
+      }
+      const g = groupsMap.get(key)!;
+      g.totalQuantity += item.availableQuantity;
+      g.unitPriceSum += (item.listPrice * item.availableQuantity);
+      if (item.color) g.colors.add(item.color);
+      g.items.push(item);
+    });
+
+    const groupedLots: StockAppleGroupedLot[] = Array.from(groupsMap.values()).map((g, idx) => {
+      const avgUnitPrice = g.totalQuantity > 0 ? Math.round(g.unitPriceSum / g.totalQuantity) : 250;
+      const totalCurrentBidUsd = Math.round(avgUnitPrice * g.totalQuantity);
+      const calculatedStartingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
+      const calculatedRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
+
+      let imageUrl = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+      if (g.deviceType === 'Apple Watch') {
+        imageUrl = '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
+      } else if (g.deviceType === 'iPad') {
+        imageUrl = g.totalQuantity > 3
+          ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+          : '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
+      } else if (g.totalQuantity > 3) {
+        imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
+      } else if (/15 pro/i.test(g.modelFamily)) {
+        imageUrl = '/images/iphone_15_pro_natural_titanium_1793849011192.jpg';
+      }
+
+      const title = `Lote ${g.totalQuantity}x Apple ${g.modelFamily} ${g.capacity} - Grade ${g.grade} (Desbloqueado)`;
+      const lotNumber = `UF-APL-${String(1000 + idx)}`;
+
+      const manifest = g.items.map((it, itemIdx) => ({
+        id: `man-apl-${idx}-${itemIdx}`,
+        model: it.model,
+        storage: it.capacity,
+        color: it.color,
+        grade: it.grade,
+        batteryHealth: 88 + (itemIdx % 12),
+        imeiMasked: `359820******${String(100 + (itemIdx * 23) % 899)}`,
+        carrierStatus: '100% Desbloqueado (Global Unlocked)',
+        icloudStatus: 'Clean / FMI OFF',
+        screenCondition: `Conforme Grade ${it.grade}`,
+        housingCondition: `Conforme Grade ${it.grade}`,
+        partNumber: it.modelNumber,
+        inventorySource: it.warehouse,
+        itemDescription: it.description,
+        qty: it.availableQuantity
+      }));
+
+      return {
+        groupKey: g.groupKey,
+        lotNumber,
+        title,
+        deviceType: g.deviceType,
+        modelFamily: g.modelFamily,
+        capacity: g.capacity,
+        grade: g.grade,
+        warehouse: g.warehouse,
+        totalQuantity: g.totalQuantity,
+        unitPriceUsd: avgUnitPrice,
+        calculatedStartingBidUsd,
+        calculatedCurrentBidUsd,
+        calculatedRetailBrl,
+        colorHighlights: Array.from(g.colors).slice(0, 4),
+        manifest,
+        imageUrl
+      };
+    });
+
+    setStockAppleGroupedLots(groupedLots);
+    return { audit, items: processedItems, groupedLots };
+  };
+
+  const handleLoadSampleStockXml = () => {
+    try {
+      const rows = parseXmlSpreadsheet(SAMPLE_STOCK_APPLE_XML);
+      setUploadedFileName('exemplo_estoque_apple_unlocked.xml');
+      setRawHeaders(Object.keys(rows[0] || {}));
+      setParsedPreviewRows(rows);
+      setPresetFormat('STOCK_APPLE');
+      const { audit } = processStockAppleRows(rows);
+      showNotice(`Exemplo XML Apple processado! ${audit.approvedCount} itens aprovados (iPhones, iPads e Watches DESBLOQUEADOS) e ${audit.discardedLockedCount} bloqueados descartados.`, 'success');
+    } catch (err: any) {
+      showNotice(`Erro ao processar exemplo XML: ${err?.message}`, 'error');
+    }
+  };
+
+  const handleLoadOfficialStockCsv = async () => {
+    setIsLoadingStockCsv(true);
+    try {
+      const res = await fetch('/assets/aistudio/Stock_List_Filtered_11052026_cd908cec.csv');
+      if (!res.ok) throw new Error('Não foi possível ler o arquivo da planilha anexada.');
+      const text = await res.text();
+      const rows = parseCsvText(text);
+      if (rows.length === 0) throw new Error('A planilha anexada não retornou linhas legíveis.');
+
+      setUploadedFileName('Stock_List_Filtered_11052026.csv (Anexo Oficial)');
+      setRawHeaders(Object.keys(rows[0] || {}));
+      setParsedPreviewRows(rows);
+      setPresetFormat('STOCK_APPLE');
+      const { audit } = processStockAppleRows(rows);
+      showNotice(`Planilha oficial em anexo carregada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches DESBLOQUEADOS) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+    } catch (err: any) {
+      showNotice(`Erro ao carregar planilha oficial: ${err?.message}`, 'error');
+    } finally {
+      setIsLoadingStockCsv(false);
+    }
+  };
+
+  // Publish Stock Apple Lots to Auction Store
+  const handleApplyStockAppleImport = () => {
+    const approvedItems = stockAppleItems.filter(i => i.status === 'APPROVED');
+    if (approvedItems.length === 0) {
+      showNotice('Nenhum item Apple desbloqueado aprovado para publicar.', 'error');
+      return;
+    }
+
+    try {
+      let newLots: AuctionLot[] = [];
+
+      if (stockAppleGroupMode === 'grouped' && stockAppleGroupedLots.length > 0) {
+        newLots = stockAppleGroupedLots.map((g, idx) => ({
+          id: `apl-lot-grp-${Date.now()}-${idx}`,
+          lotNumber: g.lotNumber,
+          title: g.title,
+          modelFamily: g.modelFamily,
+          oemBrand: 'Apple',
+          quantity: g.totalQuantity,
+          grade: g.grade,
+          primaryStorage: g.capacity,
+          colorHighlights: g.colorHighlights.length > 0 ? g.colorHighlights : ['Prata', 'Preto Espacial'],
+          batteryHealthRange: '88% - 100% (Verificado Apple)',
+          carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+          imeiStatus: 'Clean ESN / 100% Verificado',
+          auctionHouse: `USAFAST Stock Hub (${g.warehouse})`,
+          location: g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12',
+          startingBidUsd: g.calculatedStartingBidUsd,
+          currentBidUsd: g.calculatedCurrentBidUsd,
+          reservePriceMet: true,
+          estimatedBrazilRetailBrl: g.calculatedRetailBrl,
+          totalBidsCount: Math.floor(Math.random() * 12) + 2,
+          endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+          imageUrl: g.imageUrl,
+          galleryImages: [
+            g.imageUrl,
+            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+            '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+          ],
+          description: `Lote oficial de atacado Apple Desbloqueado contendo ${g.totalQuantity} aparelho(s) (${g.modelFamily} ${g.capacity}). Classificação técnica ${g.grade}. 100% desbloqueado de fábrica e auditado pelo hub USAFAST.`,
+          diagnosticReport: {
+            faceId: true,
+            trueTone: true,
+            camerasPassed: true,
+            batteryTested: true,
+            cleanEsn: true,
+            mdmFree: true
+          },
+          manifest: g.manifest,
+          bidsHistory: [
+            {
+              id: `bid-apl-init-${idx}`,
+              bidderName: 'Licitante Inicial Hub',
+              amountUsd: g.calculatedCurrentBidUsd,
+              timestamp: 'Início do Leilão'
+            }
+          ],
+          sourceType: 'STOCK_APPLE'
+        }));
+      } else {
+        // Individual item mode
+        newLots = approvedItems.map((it, idx) => {
+          const totalCurrentBidUsd = Math.round(it.listPrice * it.availableQuantity);
+          const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
+          const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
+
+          let imageUrl = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+          if (it.deviceType === 'Apple Watch') imageUrl = '/images/hero_auction_warehouse_iphones_1793849010124.jpg';
+          else if (it.deviceType === 'iPad') imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
+          else if (it.availableQuantity > 3) imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
+
+          return {
+            id: `apl-lot-ind-${Date.now()}-${idx}`,
+            lotNumber: `UF-${it.itemNumber}`,
+            title: `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
+            modelFamily: it.model,
+            oemBrand: 'Apple',
+            quantity: it.availableQuantity,
+            grade: it.grade,
+            primaryStorage: it.capacity,
+            colorHighlights: [it.color],
+            batteryHealthRange: '88% - 100% (Verificado)',
+            carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+            imeiStatus: 'Clean ESN / 100% Verificado',
+            auctionHouse: `USAFAST Stock Hub (${it.warehouse})`,
+            location: it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12',
+            startingBidUsd,
+            currentBidUsd: totalCurrentBidUsd,
+            reservePriceMet: true,
+            estimatedBrazilRetailBrl,
+            totalBidsCount: Math.floor(Math.random() * 8) + 1,
+            endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+            imageUrl,
+            galleryImages: [
+              imageUrl,
+              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+            ],
+            description: `Item #${it.itemNumber} - Apple ${it.model} ${it.capacity}. Quantidade: ${it.availableQuantity}. ${it.description}. Grade ${it.grade}. Status: 100% UNLOCKED.`,
+            diagnosticReport: {
+              faceId: true,
+              trueTone: true,
+              camerasPassed: true,
+              batteryTested: true,
+              cleanEsn: true,
+              mdmFree: true
+            },
+            manifest: [
+              {
+                id: `man-ind-${idx}`,
+                model: it.model,
+                storage: it.capacity,
+                color: it.color,
+                grade: it.grade,
+                batteryHealth: 92,
+                imeiMasked: `359820******${String(100 + (idx * 13) % 899)}`,
+                carrierStatus: '100% Desbloqueado',
+                icloudStatus: 'Clean / FMI OFF',
+                screenCondition: `Conforme Grade ${it.grade}`,
+                housingCondition: `Conforme Grade ${it.grade}`,
+                partNumber: it.modelNumber,
+                inventorySource: it.warehouse,
+                itemDescription: it.description,
+                qty: it.availableQuantity
+              }
+            ],
+            bidsHistory: [
+              {
+                id: `bid-ind-${idx}`,
+                bidderName: 'Licitante Inicial Hub',
+                amountUsd: totalCurrentBidUsd,
+                timestamp: 'Início do Leilão'
+              }
+            ],
+            sourceType: 'STOCK_APPLE'
+          };
+        });
+      }
+
+      const finalLots = replaceExistingLots
+        ? newLots
+        : [...newLots, ...auctions];
+
+      onUpdateAuctions(finalLots);
+      try {
+        localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
+      } catch (e) {}
+
+      showNotice(`🎉 ${newLots.length} Lotes Apple Desbloqueados (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
+      setAdminTab('lots');
+    } catch (err: any) {
+      showNotice(`Falha ao publicar lotes Apple: ${err?.message}`, 'error');
+    }
   };
 
   const SAMPLE_VERIZON_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -518,6 +1391,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
     setUploadedFileName(file.name);
     const isXml = file.name.toLowerCase().endsWith('.xml') || file.type.includes('xml');
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
 
     if (isXml) {
       const reader = new FileReader();
@@ -533,10 +1407,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           setRawHeaders(headers);
           setParsedPreviewRows(rows);
 
+          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
+                               /stock/i.test(file.name) ||
+                               (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
+
           const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h)) ||
                             /verizon|usafast/i.test(file.name);
 
-          if (isVerizon || presetFormat === 'VERIZON') {
+          if (isStockApple || presetFormat === 'STOCK_APPLE') {
+            setPresetFormat('STOCK_APPLE');
+            const { audit } = processStockAppleRows(rows);
+            showNotice(`Arquivo XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} aparelhos aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          } else if (isVerizon || presetFormat === 'VERIZON') {
             setPresetFormat('VERIZON');
             const grouped = processVerizonRows(rows);
             let totalUnits = 0;
@@ -554,7 +1436,50 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       return;
     }
 
-    // Standard binary reading for XLSX / XLS / CSV
+    if (isCsv) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const text = String(evt.target?.result || '');
+          const rows = parseCsvText(text);
+          if (rows.length === 0) {
+            showNotice('O arquivo CSV parece vazio ou sem cabeçalhos legíveis.', 'error');
+            return;
+          }
+          const headers = Object.keys(rows[0] || {});
+          setRawHeaders(headers);
+          setParsedPreviewRows(rows);
+
+          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
+                               /stock/i.test(file.name) ||
+                               (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
+
+          const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h)) ||
+                            /verizon/i.test(file.name);
+
+          if (isStockApple || presetFormat === 'STOCK_APPLE') {
+            setPresetFormat('STOCK_APPLE');
+            const { audit } = processStockAppleRows(rows);
+            showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          } else if (isVerizon || presetFormat === 'VERIZON') {
+            setPresetFormat('VERIZON');
+            const grouped = processVerizonRows(rows);
+            let totalUnits = 0;
+            grouped.forEach(g => { totalUnits += g.totalQty; });
+            showNotice(`Arquivo VERIZON detectado! ${grouped.length} lotes agrupados e ${totalUnits} aparelhos lidos.`);
+          } else {
+            setPresetFormat('GENERIC');
+            showNotice(`Arquivo "${file.name}" carregado com ${rows.length} linhas.`);
+          }
+        } catch (err: any) {
+          showNotice(`Erro ao processar arquivo CSV: ${err?.message}`, 'error');
+        }
+      };
+      reader.readAsText(file);
+      return;
+    }
+
+    // Standard binary reading for XLSX / XLS
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -562,23 +1487,60 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(ws);
         const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        if (dataGrid.length === 0) {
+          showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
+          return;
+        }
+
+        // Find header row in first 10 rows
+        let headerIdx = 0;
+        for (let r = 0; r < Math.min(10, dataGrid.length); r++) {
+          const rowStr = (dataGrid[r] || []).map(c => String(c || '').toLowerCase()).join(' ');
+          if (rowStr.includes('item') && (rowStr.includes('warehouse') || rowStr.includes('model') || rowStr.includes('category') || rowStr.includes('lock'))) {
+            headerIdx = r;
+            break;
+          } else if (rowStr.includes('lot') && (rowStr.includes('description') || rowStr.includes('title') || rowStr.includes('model'))) {
+            headerIdx = r;
+            break;
+          }
+        }
+
+        const headers = (dataGrid[headerIdx] as string[]).map(h => String(h || '').trim());
+        const rawJson: any[] = [];
+        for (let r = headerIdx + 1; r < dataGrid.length; r++) {
+          const rowData = dataGrid[r];
+          if (!rowData || rowData.length === 0) continue;
+          const obj: any = {};
+          headers.forEach((h, i) => {
+            obj[h] = rowData[i] !== undefined ? rowData[i] : '';
+          });
+          if (Object.values(obj).some(v => v !== '')) {
+            rawJson.push(obj);
+          }
+        }
 
         if (rawJson.length === 0) {
           showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
           return;
         }
 
-        const headers = (dataGrid[0] as string[]).map(h => String(h || '').trim());
         setRawHeaders(headers);
         setParsedPreviewRows(rawJson);
 
-        // Check if file matches the VERIZON standard
+        const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
+                             /stock/i.test(file.name) ||
+                             (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
+
         const isVerizonFormat = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
                                 /verizon/i.test(file.name);
 
-        if (isVerizonFormat || presetFormat === 'VERIZON') {
+        if (isStockApple || presetFormat === 'STOCK_APPLE') {
+          setPresetFormat('STOCK_APPLE');
+          const { audit } = processStockAppleRows(rawJson);
+          showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        } else if (isVerizonFormat || presetFormat === 'VERIZON') {
           setPresetFormat('VERIZON');
           const grouped = processVerizonRows(rawJson);
           let totalUnits = 0;
@@ -630,8 +1592,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         setParsedPreviewRows(rows);
         setUploadedFileName('Dados Colados em XML');
 
+        const isStockApple = headers.some(h => /item #|itemnumber|warehouse|lock status|lockstatus|available quantity|list price/i.test(h)) ||
+                             (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
+
         const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h));
-        if (isVerizon || presetFormat === 'VERIZON') {
+
+        if (isStockApple || presetFormat === 'STOCK_APPLE') {
+          setPresetFormat('STOCK_APPLE');
+          const { audit } = processStockAppleRows(rows);
+          showNotice(`XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        } else if (isVerizon || presetFormat === 'VERIZON') {
           setPresetFormat('VERIZON');
           const grouped = processVerizonRows(rows);
           showNotice(`XML Padrão VERIZON processado! ${grouped.length} lotes agrupados.`);
@@ -647,25 +1617,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
 
     try {
-      const wb = XLSX.read(pasteText.trim(), { type: 'string' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawJson: any[] = XLSX.utils.sheet_to_json(ws);
-      const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      let rows = parseCsvText(pasteText.trim());
+      if (rows.length === 0) {
+        const wb = XLSX.read(pasteText.trim(), { type: 'string' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws);
+      }
 
-      if (rawJson.length === 0) {
+      if (rows.length === 0) {
         showNotice('Nenhum registro reconhecido no texto colado.', 'error');
         return;
       }
 
-      const headers = (dataGrid[0] as string[]).map(h => String(h || '').trim());
+      const headers = Object.keys(rows[0] || {});
       setRawHeaders(headers);
-      setParsedPreviewRows(rawJson);
+      setParsedPreviewRows(rows);
       setUploadedFileName('Dados Colados do Excel / CSV');
 
+      const isStockApple = headers.some(h => /item #|itemnumber|warehouse|lock status|lockstatus|available quantity|list price/i.test(h)) ||
+                           (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
+
       const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h));
-      if (isVerizon || presetFormat === 'VERIZON') {
+
+      if (isStockApple || presetFormat === 'STOCK_APPLE') {
+        setPresetFormat('STOCK_APPLE');
+        const { audit } = processStockAppleRows(rows);
+        showNotice(`Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+      } else if (isVerizon || presetFormat === 'VERIZON') {
         setPresetFormat('VERIZON');
-        const grouped = processVerizonRows(rawJson);
+        const grouped = processVerizonRows(rows);
         showNotice(`Padrão VERIZON detectado! ${grouped.length} lotes agrupados.`);
       } else {
         setPresetFormat('GENERIC');
@@ -684,7 +1664,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           location: headers.find(h => /localizacao|armazem|cidade|location|estado/i.test(h)) || ''
         };
         setColumnMapping(mapping);
-        showNotice(`${rawJson.length} linhas de leilão processadas com sucesso!`);
+        showNotice(`${rows.length} linhas de leilão processadas com sucesso!`);
       }
     } catch (e: any) {
       showNotice(`Erro ao processar dados colados: ${e?.message}`, 'error');
@@ -790,6 +1770,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Publish Generic Custom Lots
   const handleApplyImport = () => {
+    if (presetFormat === 'STOCK_APPLE' && stockAppleItems.length > 0) {
+      handleApplyStockAppleImport();
+      return;
+    }
+
     if (presetFormat === 'VERIZON' && verizonGroupedLots.length > 0) {
       handleApplyVerizonImport();
       return;
@@ -1087,6 +2072,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     setClientsList(prev => prev.map((c, i) => i === idx ? { ...c, verifiedStatus: !c.verifiedStatus } : c));
     showNotice('Status do cliente atualizado com sucesso!');
   };
+
+  // Filtering and pagination for Stock Apple preview table
+  const filteredStockItems = stockAppleItems.filter(item => {
+    if (stockAppleFilterType === 'IPHONE' && (item.deviceType !== 'iPhone' || item.status !== 'APPROVED')) return false;
+    if (stockAppleFilterType === 'IPAD' && (item.deviceType !== 'iPad' || item.status !== 'APPROVED')) return false;
+    if (stockAppleFilterType === 'WATCH' && (item.deviceType !== 'Apple Watch' || item.status !== 'APPROVED')) return false;
+    if (stockAppleFilterType === 'DISCARDED_LOCKED' && item.status !== 'DISCARDED_LOCKED') return false;
+    if (stockAppleFilterType === 'ALL' && item.status !== 'APPROVED') return false;
+
+    if (stockAppleSearch.trim()) {
+      const q = stockAppleSearch.toLowerCase();
+      const matchModel = item.model.toLowerCase().includes(q);
+      const matchNumber = item.itemNumber.toLowerCase().includes(q);
+      const matchStorage = item.capacity.toLowerCase().includes(q);
+      const matchColor = item.color.toLowerCase().includes(q);
+      const matchWarehouse = item.warehouse.toLowerCase().includes(q);
+      if (!matchModel && !matchNumber && !matchStorage && !matchColor && !matchWarehouse) return false;
+    }
+    return true;
+  });
+
+  const stockPageSize = 15;
+  const totalStockPages = Math.max(1, Math.ceil(filteredStockItems.length / stockPageSize));
+  const paginatedStockItems = filteredStockItems.slice((stockApplePage - 1) * stockPageSize, stockApplePage * stockPageSize);
 
   return (
     <div className="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-slate-200 space-y-8">
@@ -1510,12 +2519,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={handleLoadOfficialStockCsv}
+                  disabled={isLoadingStockCsv}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95"
+                  title="Carregar a planilha oficial em anexo com 8.160 itens (filtra apenas iPhones, iPads e Watches UNLOCKED)"
+                >
+                  {isLoadingStockCsv ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <Package className="w-4 h-4 text-emerald-200" />
+                  )}
+                  <span>
+                    {isLoadingStockCsv ? 'Lendo e Filtrando...' : '🍏 Carregar Planilha Apple Oficial (8.160 itens)'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLoadSampleStockXml}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
+                  title="Testar importação com XML do padrão Estoque Apple (com UNLOCKED e demonstração do filtro de bloqueados)"
+                >
+                  <Code className="w-4 h-4 text-emerald-400" />
+                  <span>⚡ Exemplo XML Apple (Stock)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleLoadSampleXml}
                   className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
                   title="Testar importação com XML modelo da Verizon"
                 >
                   <Code className="w-4 h-4 text-amber-400" />
-                  <span>⚡ Carregar Exemplo XML (Verizon)</span>
+                  <span>⚡ Exemplo XML (Verizon)</span>
                 </button>
               </div>
             </div>
@@ -1523,10 +2557,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
           <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-5">
             {/* Format & Mode Selector Tabs */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
                 <span className="text-xs font-bold text-slate-300 block">Formato de Importação:</span>
-                <div className="flex items-center gap-2 mt-1.5">
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPresetFormat('STOCK_APPLE')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'STOCK_APPLE'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-1 ring-emerald-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>🍏 Estoque Apple (XML / CSV Stock List)</span>
+                    <span className="px-1.5 py-0.2 bg-emerald-400 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
+                      UNLOCKED ONLY
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setPresetFormat('VERIZON')}
@@ -1536,7 +2585,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>★ Padrão VERIZON Oficial (Agrupado por Lote #)</span>
+                    <span>★ Padrão VERIZON (Grades A(T) DNA...)</span>
                   </button>
 
                   <button
@@ -1548,7 +2597,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>Padrão Custom / Genérico (1 linha por lote)</span>
+                    <span>Padrão Custom / Genérico</span>
                   </button>
                 </div>
               </div>
@@ -1601,30 +2650,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
                 <div className="space-y-1">
                   <span className="text-sm font-bold text-white block">
-                    {uploadedFileName ? `Arquivo Carregado: ${uploadedFileName}` : 'Clique para subir ou arraste sua planilha VERIZON aqui'}
+                    {uploadedFileName ? `Arquivo Carregado: ${uploadedFileName}` : 'Clique para subir ou arraste sua planilha (XML / CSV / Excel) aqui'}
                   </span>
                   <span className="text-xs text-slate-400 block">
-                    Formatos aceitos: Microsoft Excel (.xlsx, .xls), CSV (.csv) e Arquivos XML (.xml)
+                    Formatos aceitos: Arquivos XML (.xml), CSV (.csv) e Microsoft Excel (.xlsx, .xls)
                   </span>
-                  <span className="text-[11px] text-amber-400/90 block font-medium">
-                    💡 Caso sua planilha esteja em XML e você não consiga anexar, use a aba "Colar Texto ou XML" ao lado!
+                  <span className="text-[11px] text-emerald-400 block font-medium">
+                    🛡️ Regra de Filtro Ativa: Na importação Apple, são aprovados exclusivamente iPhones, iPads e Apple Watches DESBLOQUEADOS (UNLOCKED).
                   </span>
                 </div>
               </div>
             ) : (
               /* Mode 2: Paste Direct from Excel or Paste XML */
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs text-slate-300 block font-medium">
                     Cole abaixo as linhas copiadas do Excel, CSV ou o código XML da sua planilha:
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setPasteText(SAMPLE_VERIZON_XML)}
-                    className="text-amber-400 hover:underline text-[11px] font-semibold"
-                  >
-                    Inserir Exemplo de XML no Campo
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPasteText(SAMPLE_STOCK_APPLE_XML)}
+                      className="text-emerald-400 hover:underline text-[11px] font-bold"
+                    >
+                      Inserir Exemplo XML Apple
+                    </button>
+                    <span className="text-slate-600">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setPasteText(SAMPLE_VERIZON_XML)}
+                      className="text-amber-400 hover:underline text-[11px] font-semibold"
+                    >
+                      Inserir Exemplo XML Verizon
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   rows={8}
@@ -1666,6 +2725,384 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               </button>
             </div>
           </div>
+
+          {/* ======================================================== */}
+          {/* STOCK APPLE UNLOCKED (XML / CSV) AUDIT & PUBLISH CONSOLE */}
+          {/* ======================================================== */}
+          {presetFormat === 'STOCK_APPLE' && stockAppleItems.length > 0 && (
+            <div className="space-y-6 p-6 bg-slate-900/90 border border-emerald-500/40 rounded-2xl shadow-2xl">
+              {/* Header & Stats Banner */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>FILTRO RIGOROSO ATIVO: 100% APPLE UNLOCKED</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">
+                      Apenas iPhones, iPads & Apple Watches Desbloqueados
+                    </span>
+                  </div>
+                  <h3 className="font-black text-white text-lg mt-1.5 flex items-center gap-2">
+                    <span>Estoque Apple Desbloqueado: {stockAppleAudit.approvedCount.toLocaleString()} Itens Aprovados</span>
+                    <span className="text-slate-400 text-sm font-normal">({stockAppleAudit.totalApprovedUnits.toLocaleString()} Aparelhos Físicos)</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Critério de seleção aplicado: Apenas modelos da Apple (<span className="text-emerald-300 font-semibold">iPhones</span>, <span className="text-emerald-300 font-semibold">iPads</span> e <span className="text-emerald-300 font-semibold">Apple Watches</span>) com status <span className="text-emerald-400 font-mono font-bold">UNLOCKED</span>. Todos os aparelhos com bloqueio de operadora ou iCloud (<span className="text-rose-400 font-mono font-bold">LOCKED</span>) foram automaticamente excluídos.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={handleApplyStockAppleImport}
+                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Publicar {stockAppleGroupMode === 'grouped' ? `${stockAppleGroupedLots.length} Lotes no Atacado` : `${stockAppleAudit.approvedCount.toLocaleString()} Lotes Individuais`} no Hub</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Quick-Stat Audit Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-emerald-950/25 border border-emerald-500/30 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-emerald-400 font-bold">
+                    <span>Aprovados (Desbloqueados)</span>
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">
+                    {stockAppleAudit.approvedCount.toLocaleString()}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-300 font-medium pt-1 border-t border-emerald-500/20">
+                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
+                      📱 {stockAppleAudit.approvedIPhones.toLocaleString()} iPhones
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
+                      📲 {stockAppleAudit.approvedIPads.toLocaleString()} iPads
+                    </span>
+                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
+                      ⌚ {stockAppleAudit.approvedWatches.toLocaleString()} Watches
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-blue-400 font-bold">
+                    <span>Total Unidades Físicas</span>
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div className="text-2xl font-black text-white font-mono">
+                    {stockAppleAudit.totalApprovedUnits.toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Soma da quantidade disponível dos itens aprovados para arremate
+                  </div>
+                </div>
+
+                <div className="p-4 bg-rose-950/20 border border-rose-500/30 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-rose-400 font-bold">
+                    <span>Descartados Bloqueados (LOCKED)</span>
+                    <Lock className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div className="text-2xl font-black text-rose-300 font-mono">
+                    {stockAppleAudit.discardedLockedCount.toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-rose-300/80 font-medium">
+                    100% filtrados para proteger o cliente de aparelhos bloqueados
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs text-amber-400 font-bold">
+                    <span>Lotes Prontos para Publicação</span>
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div className="text-2xl font-black text-amber-300 font-mono">
+                    {stockAppleGroupMode === 'grouped' ? stockAppleGroupedLots.length.toLocaleString() : stockAppleAudit.approvedCount.toLocaleString()}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    {stockAppleGroupMode === 'grouped' ? 'Agrupados por Modelo + Capacidade + Grade' : 'Individualmente linha a linha por Item #'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Multiplier & Mode Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-950 rounded-xl border border-slate-800">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-300 block">Modo de Consolidação de Lotes:</label>
+                  <div className="flex flex-col gap-2 text-xs">
+                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      stockAppleGroupMode === 'grouped'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="appleGroupMode"
+                        checked={stockAppleGroupMode === 'grouped'}
+                        onChange={() => setStockAppleGroupMode('grouped')}
+                        className="accent-emerald-400"
+                      />
+                      <span>Consolidar por Modelo & Grade ({stockAppleGroupedLots.length} lotes de atacado)</span>
+                    </label>
+
+                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      stockAppleGroupMode === 'individual'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="appleGroupMode"
+                        checked={stockAppleGroupMode === 'individual'}
+                        onChange={() => setStockAppleGroupMode('individual')}
+                        className="accent-emerald-400"
+                      />
+                      <span>Lotes Individuais por Linha ({stockAppleAudit.approvedCount.toLocaleString()} lotes)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>Desconto Lance Inicial (%):</span>
+                    <span className="text-emerald-400 font-mono font-black">{stockAppleDiscountPercent}% OFF</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="40"
+                    step="5"
+                    value={stockAppleDiscountPercent}
+                    onChange={e => setStockAppleDiscountPercent(parseInt(e.target.value, 10) || 15)}
+                    className="w-full accent-emerald-400 cursor-pointer"
+                  />
+                  <span className="text-[10px] text-slate-500 block">
+                    Define o lance de abertura abaixo do List Price de atacado para incentivar lances.
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Modo de Publicação no Catálogo:</label>
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900 p-2.5 rounded-lg border border-slate-800 hover:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={replaceExistingLots}
+                      onChange={e => setReplaceExistingLots(e.target.checked)}
+                      className="accent-emerald-400 rounded w-4 h-4"
+                    />
+                    <span>Substituir leilões atuais pelos novos lotes Apple</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500 block">
+                    Cotação PTAX aplicada: R$ {usdRate.toFixed(2)} por USD.
+                  </span>
+                </div>
+              </div>
+
+              {/* Table Filter Tabs & Search Bar */}
+              <div className="space-y-3 pt-2 border-t border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { setStockAppleFilterType('ALL'); setStockApplePage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                        stockAppleFilterType === 'ALL'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      Todos Aprovados ({stockAppleAudit.approvedCount.toLocaleString()})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStockAppleFilterType('IPHONE'); setStockApplePage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                        stockAppleFilterType === 'IPHONE'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>iPhones ({stockAppleAudit.approvedIPhones.toLocaleString()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStockAppleFilterType('IPAD'); setStockApplePage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                        stockAppleFilterType === 'IPAD'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      <Tablet className="w-3.5 h-3.5" />
+                      <span>iPads ({stockAppleAudit.approvedIPads.toLocaleString()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStockAppleFilterType('WATCH'); setStockApplePage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                        stockAppleFilterType === 'WATCH'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      <Watch className="w-3.5 h-3.5" />
+                      <span>Apple Watches ({stockAppleAudit.approvedWatches.toLocaleString()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStockAppleFilterType('DISCARDED_LOCKED'); setStockApplePage(1); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                        stockAppleFilterType === 'DISCARDED_LOCKED'
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-rose-950/40 text-rose-400 hover:bg-rose-900/50 border border-rose-500/30'
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Auditoria: Descartados LOCKED ({stockAppleAudit.discardedLockedCount.toLocaleString()})</span>
+                    </button>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Filtrar por modelo, cor, GB..."
+                      value={stockAppleSearch}
+                      onChange={e => { setStockAppleSearch(e.target.value); setStockApplePage(1); }}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Table of items */}
+                <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950/60 max-h-[460px] overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900/90 text-slate-400 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-800">
+                      <tr>
+                        <th className="py-2.5 px-3">Item #</th>
+                        <th className="py-2.5 px-3">Tipo</th>
+                        <th className="py-2.5 px-3">Modelo & Capacidade</th>
+                        <th className="py-2.5 px-3">Cor</th>
+                        <th className="py-2.5 px-3">Grade</th>
+                        <th className="py-2.5 px-3 text-center">Status Bloqueio</th>
+                        <th className="py-2.5 px-3 text-right">Qtd</th>
+                        <th className="py-2.5 px-3 text-right">Preço Unit.</th>
+                        <th className="py-2.5 px-3">Armazém</th>
+                        <th className="py-2.5 px-3 text-center">Filtro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {paginatedStockItems.map((item, idx) => {
+                        const isApproved = item.status === 'APPROVED';
+                        return (
+                          <tr
+                            key={item.id || idx}
+                            className={`hover:bg-slate-900/60 transition-colors ${
+                              !isApproved ? 'bg-rose-950/10' : ''
+                            }`}
+                          >
+                            <td className="py-2 px-3 font-mono text-[11px] text-slate-300 font-bold">
+                              {item.itemNumber}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 flex items-center gap-1 w-fit">
+                                {item.deviceType === 'iPhone' && <Smartphone className="w-3 h-3 text-blue-400" />}
+                                {item.deviceType === 'iPad' && <Tablet className="w-3 h-3 text-emerald-400" />}
+                                {item.deviceType === 'Apple Watch' && <Watch className="w-3 h-3 text-amber-400" />}
+                                <span>{item.deviceType}</span>
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-white">
+                              <div>{item.model}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{item.capacity} · {item.modelNumber}</div>
+                            </td>
+                            <td className="py-2 px-3 text-slate-300">{item.color}</td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400/10 text-amber-300 border border-amber-400/30">
+                                {item.grade}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {isApproved ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 inline-flex items-center gap-1">
+                                  <ShieldCheck className="w-3 h-3" />
+                                  <span>UNLOCKED</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/40 inline-flex items-center gap-1">
+                                  <Lock className="w-3 h-3" />
+                                  <span>LOCKED</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-white">
+                              {item.availableQuantity}x
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">
+                              ${item.listPrice.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">
+                              {item.warehouse}
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {isApproved ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-bold">
+                                  APROVADO
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-rose-500/20 text-rose-300 font-bold" title={item.discardReason}>
+                                  DESCARTADO
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {paginatedStockItems.length === 0 && (
+                        <tr>
+                          <td colSpan={10} className="py-8 text-center text-slate-500">
+                            Nenhum item encontrado para este filtro ou busca.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 text-xs text-slate-400">
+                  <span>
+                    Mostrando {filteredStockItems.length > 0 ? (stockApplePage - 1) * stockPageSize + 1 : 0} a {Math.min(stockApplePage * stockPageSize, filteredStockItems.length)} de {filteredStockItems.length.toLocaleString()} itens
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={stockApplePage <= 1}
+                      onClick={() => setStockApplePage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none rounded text-xs font-semibold text-white flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Anterior</span>
+                    </button>
+                    <span className="font-mono text-slate-300 font-bold px-2">
+                      Página {stockApplePage} de {totalStockPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={stockApplePage >= totalStockPages}
+                      onClick={() => setStockApplePage(p => Math.min(totalStockPages, p + 1))}
+                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none rounded text-xs font-semibold text-white flex items-center gap-1"
+                    >
+                      <span>Próxima</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ======================================================== */}
           {/* VERIZON PREVIEW & PUBLISH CONSOLE */}

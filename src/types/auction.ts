@@ -1,4 +1,4 @@
-export type GradeType = 'Grade A+' | 'Grade A' | 'Grade B' | 'Grade C' | 'CPO Refurbished' | 'A(T) DNA' | 'B(T) DNB' | 'C(T) DNC' | 'D(T) DND' | string;
+export type GradeType = 'Grade A+' | 'Grade A' | 'Grade B' | 'Grade C' | 'CPO Refurbished' | 'DNA' | 'DNB' | 'DNC' | 'DND' | 'A(T) DNA' | 'B(T) DNB' | 'C(T) DNC' | 'D(T) DND' | string;
 
 export interface DeviceItem {
   id: string;
@@ -61,7 +61,7 @@ export interface AuctionLot {
   bidsHistory: BidHistoryItem[];
   originalListingUrl?: string;
   listingUrl?: string;
-  sourceType?: 'VERIZON' | 'CARRIER' | 'CUSTOM' | 'DEFAULT';
+  sourceType?: 'VERIZON' | 'CARRIER' | 'CUSTOM' | 'DEFAULT' | 'STOCK_APPLE' | 'ASSURANT';
 }
 
 export interface SystemUser {
@@ -69,12 +69,16 @@ export interface SystemUser {
   email: string;
   cpfCnpj: string;
   phone: string;
+  whatsapp?: string;
+  whatsappNotificationEnabled?: boolean;
   biddingLimitUsd: number;
   verifiedStatus: boolean;
   registeredDate: string;
   password?: string;
   role?: 'client' | 'admin';
 }
+
+export type OfferStatusType = 'Aceita' | 'Recusada' | 'Em Análise' | 'Contra-Oferta' | 'Vencendo' | 'Homologada / Arrematada' | 'Superada';
 
 export interface AdminOffer {
   id: string;
@@ -84,9 +88,13 @@ export interface AdminOffer {
   clientName: string;
   clientEmail: string;
   clientPhone?: string;
+  clientWhatsapp?: string;
   amountUsd: number;
   amountBrl: number;
   timestamp: string;
-  status: 'Vencendo' | 'Homologada / Arrematada' | 'Superada' | 'Em Análise';
+  status: OfferStatusType;
+  counterOfferUsd?: number;
+  adminNote?: string;
+  updatedAt?: string;
   isAutoSniper?: boolean;
 }
