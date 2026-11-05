@@ -61,7 +61,7 @@ export interface AuctionLot {
   bidsHistory: BidHistoryItem[];
   originalListingUrl?: string;
   listingUrl?: string;
-  sourceType?: 'VERIZON' | 'CARRIER' | 'CUSTOM' | 'DEFAULT' | 'STOCK_APPLE' | 'ASSURANT';
+  sourceType?: 'VERIZON' | 'CARRIER' | 'CUSTOM' | 'DEFAULT' | 'STOCK_APPLE' | 'ASSURANT' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS';
 }
 
 export interface SystemUser {

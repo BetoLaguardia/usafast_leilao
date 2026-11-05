@@ -62,7 +62,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('all');
   const [selectedCapacityFilter, setSelectedCapacityFilter] = useState<string>('all');
   const [selectedAuctionHouseFilter, setSelectedAuctionHouseFilter] = useState<string>('all');
-  const [selectedAuctionSystemFilter, setSelectedAuctionSystemFilter] = useState<'all' | 'VERIZON' | 'ASSURANT' | 'STOCK_APPLE'>('all');
+  const [selectedAuctionSystemFilter, setSelectedAuctionSystemFilter] = useState<'all' | 'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS'>('all');
   const [selectedLotTypeFilter, setSelectedLotTypeFilter] = useState<string>('all');
   const [clientSearch, setClientSearch] = useState('');
 
@@ -160,6 +160,10 @@ export const ClientePage: React.FC<ClientePageProps> = ({
     if (selectedAuctionSystemFilter === 'VERIZON' && lot.sourceType !== 'VERIZON' && !/verizon/i.test(lot.auctionHouse)) return false;
     if (selectedAuctionSystemFilter === 'ASSURANT' && lot.sourceType !== 'ASSURANT' && !/assurant/i.test(lot.auctionHouse)) return false;
     if (selectedAuctionSystemFilter === 'STOCK_APPLE' && lot.sourceType !== 'STOCK_APPLE' && !/stock/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'MARKETPLACE_1' && lot.sourceType !== 'MARKETPLACE_1' && !/marketplace 1/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'MARKETPLACE_2' && lot.sourceType !== 'MARKETPLACE_2' && !/marketplace 2/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'MARKETPLACE_3' && lot.sourceType !== 'MARKETPLACE_3' && !/marketplace 3/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'MACBOOKS' && lot.sourceType !== 'MACBOOKS' && !/macbook/i.test(lot.auctionHouse)) return false;
     if (selectedLotTypeFilter === 'wholesale' && lot.quantity <= 1) return false;
     if (selectedLotTypeFilter === 'single' && lot.quantity > 1) return false;
     return true;
@@ -335,6 +339,10 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   <option value="all">Todos os Leilões</option>
                   <option value="VERIZON">★ Leilão VERIZON</option>
                   <option value="ASSURANT">★ Leilão ASSURANT</option>
+                  <option value="MARKETPLACE_1">★ Marketplace 1</option>
+                  <option value="MARKETPLACE_2">★ Marketplace 2</option>
+                  <option value="MARKETPLACE_3">★ Marketplace 3</option>
+                  <option value="MACBOOKS">💻 Leilão Macbooks</option>
                   <option value="STOCK_APPLE">🍏 Estoque Apple</option>
                 </select>
               </div>

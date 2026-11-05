@@ -75,7 +75,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadMode, setUploadMode] = useState<'file' | 'paste'>('file');
-  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'GENERIC'>('VERIZON');
+  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS' | 'GENERIC'>('VERIZON');
+  const isStockFeedFormat = (fmt: string) => ['STOCK_APPLE', 'ASSURANT', 'MARKETPLACE_1', 'MARKETPLACE_2', 'MARKETPLACE_3', 'MACBOOKS'].includes(fmt);
   const [pasteText, setPasteText] = useState('');
   const [parsedPreviewRows, setParsedPreviewRows] = useState<any[]>([]);
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
@@ -1177,12 +1178,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     try {
       const isAssurant = presetFormat === 'ASSURANT';
       const markupPerUnit = isAssurant && addAssurantFiveUsd ? assurantMarkupAmount : 0;
+      const formatMeta: Record<string, { prefix: string; house: string; loc: string; label: string }> = {
+        ASSURANT: { prefix: 'ASR', house: 'Assurant Liquidation Hub', loc: 'Assurant Hub - Miami / Orlando', label: 'ASSURANT' },
+        MARKETPLACE_1: { prefix: 'MKT1', house: 'Marketplace 1 Hub', loc: 'Miami Hub - Marketplace 1', label: 'Marketplace 1' },
+        MARKETPLACE_2: { prefix: 'MKT2', house: 'Marketplace 2 Hub', loc: 'Miami Hub - Marketplace 2', label: 'Marketplace 2' },
+        MARKETPLACE_3: { prefix: 'MKT3', house: 'Marketplace 3 Hub', loc: 'Miami Hub - Marketplace 3', label: 'Marketplace 3' },
+        MACBOOKS: { prefix: 'MAC', house: 'Leilão Macbooks Hub', loc: 'Miami Hub - Apple Macbooks', label: 'Leilão Macbooks' },
+        STOCK_APPLE: { prefix: 'UF', house: 'USAFAST Stock Hub', loc: 'Miami Hub - Armazém W23', label: 'Estoque Apple' }
+      };
+      const meta = formatMeta[presetFormat] || formatMeta.STOCK_APPLE;
       let newLots: AuctionLot[] = [];
 
       if (stockAppleGroupMode === 'grouped' && stockAppleGroupedLots.length > 0) {
         newLots = stockAppleGroupedLots.map((g, idx) => ({
-          id: `${isAssurant ? 'asr' : 'apl'}-lot-grp-${Date.now()}-${idx}`,
-          lotNumber: isAssurant ? `ASR-${g.lotNumber.replace(/^UF-/, '')}` : g.lotNumber,
+          id: `${meta.prefix.toLowerCase()}-lot-grp-${Date.now()}-${idx}`,
+          lotNumber: `${meta.prefix}-${g.lotNumber.replace(/^(UF-|ASR-)/, '')}`,
           title: g.title,
           modelFamily: g.modelFamily,
           oemBrand: 'Apple',
@@ -1193,8 +1203,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           batteryHealthRange: '88% - 100% (Verificado Apple)',
           carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
           imeiStatus: 'Clean ESN / 100% Verificado',
-          auctionHouse: isAssurant ? 'Assurant Liquidation Hub' : `USAFAST Stock Hub (${g.warehouse})`,
-          location: isAssurant ? 'Assurant Hub - Miami / Orlando' : (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12'),
+          auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${g.warehouse})` : meta.house,
+          location: presetFormat === 'STOCK_APPLE' ? (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
           startingBidUsd: Math.round(g.calculatedStartingBidUsd + (g.totalQuantity * markupPerUnit)),
           currentBidUsd: Math.round(g.calculatedCurrentBidUsd + (g.totalQuantity * markupPerUnit)),
           reservePriceMet: true,
@@ -1225,7 +1235,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               timestamp: 'Início do Leilão'
             }
           ],
-          sourceType: isAssurant ? 'ASSURANT' : 'STOCK_APPLE'
+          sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
         }));
       } else {
         // Individual item mode
@@ -1241,13 +1251,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           else if (it.availableQuantity > 3) imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
 
           return {
-            id: `${isAssurant ? 'asr' : 'apl'}-lot-ind-${Date.now()}-${idx}`,
-            lotNumber: isAssurant ? `ASR-${it.itemNumber}` : `UF-${it.itemNumber}`,
-            title: isAssurant
+            id: `${meta.prefix.toLowerCase()}-lot-ind-${Date.now()}-${idx}`,
+            lotNumber: `${meta.prefix}-${it.itemNumber}`,
+            title: presetFormat !== 'STOCK_APPLE'
               ? `Lote ${it.availableQuantity}x ${it.make || 'Apple'} ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`
               : `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
             modelFamily: it.model,
-            oemBrand: isAssurant ? (it.make || 'Apple') : 'Apple',
+            oemBrand: presetFormat !== 'STOCK_APPLE' ? (it.make || 'Apple') : 'Apple',
             quantity: it.availableQuantity,
             grade: it.grade,
             primaryStorage: it.capacity,
@@ -1255,8 +1265,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             batteryHealthRange: '88% - 100% (Verificado)',
             carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
             imeiStatus: 'Clean ESN / 100% Verificado',
-            auctionHouse: isAssurant ? 'Assurant Liquidation Hub' : `USAFAST Stock Hub (${it.warehouse})`,
-            location: isAssurant ? 'Assurant Hub - Miami / Orlando' : (it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12'),
+            auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${it.warehouse})` : meta.house,
+            location: presetFormat === 'STOCK_APPLE' ? (it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
             startingBidUsd,
             currentBidUsd: totalCurrentBidUsd,
             reservePriceMet: true,
@@ -1305,7 +1315,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 timestamp: 'Início do Leilão'
               }
             ],
-            sourceType: isAssurant ? 'ASSURANT' : 'STOCK_APPLE'
+            sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
           };
         });
       }
@@ -1319,7 +1329,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
       } catch (e) {}
 
-      showNotice(`🎉 ${newLots.length} Lotes ${isAssurant ? `ASSURANT (+$${markupPerUnit} USD/un)` : 'Apple Desbloqueados'} (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
+      showNotice(`🎉 ${newLots.length} Lotes ${meta.label} (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
       setAdminTab('lots');
     } catch (err: any) {
       showNotice(`Falha ao publicar lotes Apple: ${err?.message}`, 'error');
@@ -1523,7 +1533,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h)) ||
                             /verizon|usafast/i.test(file.name);
 
-          if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+          if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Arquivo XML ${presetFormat} processado! ${audit.approvedCount.toLocaleString()} lotes/aparelhos UNLOCKED aprovados.`, 'success');
+          } else if (/assurant/i.test(file.name)) {
             setPresetFormat('ASSURANT');
             setStockAppleGroupMode('individual');
             const { audit } = processStockAppleRows(rows, true);
@@ -1571,7 +1585,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h)) ||
                             /verizon/i.test(file.name);
 
-          if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+          if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
+          } else if (/assurant/i.test(file.name)) {
             setPresetFormat('ASSURANT');
             setStockAppleGroupMode('individual');
             const { audit } = processStockAppleRows(rows, true);
@@ -1655,7 +1673,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         const isVerizonFormat = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
                                 /verizon/i.test(file.name);
 
-        if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+        if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
+        } else if (/assurant/i.test(file.name)) {
           setPresetFormat('ASSURANT');
           setStockAppleGroupMode('individual');
           const { audit } = processStockAppleRows(rawJson, true);
@@ -1904,7 +1926,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Publish Generic Custom Lots
   const handleApplyImport = () => {
-    if ((presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT') && stockAppleItems.length > 0) {
+    if (isStockFeedFormat(presetFormat) && stockAppleItems.length > 0) {
       handleApplyStockAppleImport();
       return;
     }
@@ -2770,6 +2792,66 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
                   <button
                     type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_1');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_1'
+                        ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25 ring-1 ring-sky-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>★ Marketplace 1 (XML / CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_2');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_2'
+                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/25 ring-1 ring-cyan-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>★ Marketplace 2 (XML / CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_3');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_3'
+                        ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-1 ring-teal-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>★ Marketplace 3 (XML / CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MACBOOKS');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MACBOOKS'
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25 ring-1 ring-purple-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>💻 Leilão Macbooks (XML / CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setPresetFormat('GENERIC')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
                       presetFormat === 'GENERIC'
@@ -2931,7 +3013,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           {/* ======================================================== */}
           {/* STOCK APPLE / ASSURANT UNLOCKED (XML / CSV) CONSOLE      */}
           {/* ======================================================== */}
-          {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT') && stockAppleItems.length > 0 && (
+          {isStockFeedFormat(presetFormat) && stockAppleItems.length > 0 && (
             <div className={`space-y-6 p-6 bg-slate-900/90 border rounded-2xl shadow-2xl ${presetFormat === 'ASSURANT' ? 'border-indigo-500/40' : 'border-emerald-500/40'}`}>
               {presetFormat === 'ASSURANT' && (
                 <div className="p-3.5 bg-indigo-950/40 border border-indigo-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
