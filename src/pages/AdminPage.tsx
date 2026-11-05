@@ -2184,7 +2184,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [newNotificationEmail, setNewNotificationEmail] = useState<string>('');
   const [testWhatsappPhone, setTestWhatsappPhone] = useState<string>('5511999999999');
   const [testWhatsappStatus, setTestWhatsappStatus] = useState<AdminOffer['status']>('Aceita');
-  const [autoSendWhatsapp, setAutoSendWhatsapp] = useState<boolean>(true);
+  const [autoSendWhatsapp, setAutoSendWhatsapp] = useState<boolean>(false);
   const [whatsappWebhookUrl, setWhatsappWebhookUrl] = useState<string>(() => {
     try {
       return localStorage.getItem('us_admin_whatsapp_webhook_v1') || '';
