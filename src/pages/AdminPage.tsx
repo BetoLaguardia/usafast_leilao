@@ -2171,6 +2171,47 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [counterOfferEditingId, setCounterOfferEditingId] = useState<string | null>(null);
   const [counterOfferUsdInput, setCounterOfferUsdInput] = useState<string>('');
   const [counterOfferNoteInput, setCounterOfferNoteInput] = useState<string>('');
+  const [lastUpdatedOfferId, setLastUpdatedOfferId] = useState<string | null>(null);
+
+  const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('us_admin_notification_emails_v1');
+      return saved ? JSON.parse(saved) : ['roblagua@gmail.com'];
+    } catch (e) {
+      return ['roblagua@gmail.com'];
+    }
+  });
+  const [newNotificationEmail, setNewNotificationEmail] = useState<string>('');
+  const [testWhatsappPhone, setTestWhatsappPhone] = useState<string>('5511999999999');
+  const [testWhatsappStatus, setTestWhatsappStatus] = useState<AdminOffer['status']>('Aceita');
+
+  const handleAddNotificationEmail = () => {
+    const email = newNotificationEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      showNotice('Informe um e-mail válido.', 'error');
+      return;
+    }
+    if (notificationEmails.includes(email)) {
+      showNotice('Este e-mail já está cadastrado.', 'error');
+      return;
+    }
+    const updated = [...notificationEmails, email];
+    setNotificationEmails(updated);
+    setNewNotificationEmail('');
+    try {
+      localStorage.setItem('us_admin_notification_emails_v1', JSON.stringify(updated));
+    } catch (e) {}
+    showNotice(`E-mail ${email} cadastrado para receber novas ofertas!`, 'success');
+  };
+
+  const handleRemoveNotificationEmail = (email: string) => {
+    const updated = notificationEmails.filter(e => e !== email);
+    setNotificationEmails(updated);
+    try {
+      localStorage.setItem('us_admin_notification_emails_v1', JSON.stringify(updated));
+    } catch (e) {}
+    showNotice(`E-mail ${email} removido.`);
+  };
 
   const handleUpdateOfferStatus = (
     offerId: string,
@@ -2195,7 +2236,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       } catch (e) {}
       return updated;
     });
-    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel.`);
+    setLastUpdatedOfferId(offerId);
+    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel — clique em "Enviar WhatsApp" para avisar no WhatsApp.`);
   };
 
   const handleExportOffersCsv = () => {
@@ -3897,6 +3939,85 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             </button>
           </div>
 
+          {/* E-mails para Novas Ofertas & Teste de Envio WhatsApp */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Cadastro de E-mails */}
+            <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-2xl space-y-3">
+              <div>
+                <h3 className="text-xs font-bold text-white">E-mails para Receber Novas Ofertas</h3>
+                <p className="text-[11px] text-slate-400">Cadastre os e-mails que serão notificados quando clientes enviarem novas ofertas.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="email"
+                  value={newNotificationEmail}
+                  onChange={e => setNewNotificationEmail(e.target.value)}
+                  placeholder="exemplo@empresa.com"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddNotificationEmail}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs shrink-0"
+                >
+                  + Cadastrar E-mail
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {notificationEmails.map(email => (
+                  <span key={email} className="px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-[11px] text-slate-200 flex items-center gap-1.5">
+                    <span>{email}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveNotificationEmail(email)}
+                      className="text-slate-400 hover:text-rose-400 font-bold"
+                      title="Remover e-mail"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Testar Envio WhatsApp */}
+            <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-2xl space-y-3">
+              <div>
+                <h3 className="text-xs font-bold text-emerald-400">Testar Envio para WhatsApp (Status da Oferta)</h3>
+                <p className="text-[11px] text-slate-400">Simule o envio da mensagem de status da oferta para o WhatsApp do cliente.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={testWhatsappPhone}
+                  onChange={e => setTestWhatsappPhone(e.target.value)}
+                  placeholder="5511999999999"
+                  className="w-40 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                />
+                <select
+                  value={testWhatsappStatus}
+                  onChange={e => setTestWhatsappStatus(e.target.value as AdminOffer['status'])}
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                >
+                  <option value="Aceita">Aceita</option>
+                  <option value="Em Análise">Em Análise</option>
+                  <option value="Contra-Oferta">Contra-Oferta</option>
+                  <option value="Recusada">Recusada</option>
+                </select>
+                <a
+                  href={`https://wa.me/${testWhatsappPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Olá! Atualização da sua oferta no Leilão USAFAST: Status alterado para *${testWhatsappStatus}*. Acesse seu painel para conferir os detalhes.`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-lg text-xs transition-colors"
+                >
+                  Testar Envio WhatsApp
+                </a>
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
@@ -4012,20 +4133,25 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                           Recusada
                         </button>
                         {(() => {
-                          const phone = (offer.clientWhatsapp || clientsList.find(c => c.email === offer.clientEmail)?.whatsapp || '').replace(/\D/g, '');
-                          if (!phone) return null;
+                          const clientObj = clientsList.find(c => c.email === offer.clientEmail);
+                          const phone = (offer.clientWhatsapp || clientObj?.whatsapp || clientObj?.phone || '5511999999999').replace(/\D/g, '');
                           const msg = encodeURIComponent(
-                            `Olá ${offer.clientName}, sua oferta no lote ${offer.lotNumber} ($${offer.amountUsd} USD) está com status: ${offer.status}${offer.counterOfferUsd ? ` (Contra-oferta: $${offer.counterOfferUsd} USD)` : ''}.`
+                            `Olá ${offer.clientName}, sua oferta no lote ${offer.lotNumber} ($${offer.amountUsd} USD) está com status: *${offer.status}*${offer.counterOfferUsd ? ` (Contra-oferta: $${offer.counterOfferUsd} USD)` : ''}.`
                           );
+                          const isHighlighted = lastUpdatedOfferId === offer.id;
                           return (
                             <a
                               href={`https://wa.me/${phone}?text=${msg}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 rounded text-[11px] font-bold"
+                              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
+                                isHighlighted
+                                  ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300 shadow-lg shadow-emerald-500/30 animate-pulse'
+                                  : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40'
+                              }`}
                               title="Enviar aviso no WhatsApp do cliente"
                             >
-                              WhatsApp
+                              Enviar WhatsApp
                             </a>
                           );
                         })()}
