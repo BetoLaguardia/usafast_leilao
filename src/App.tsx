@@ -516,8 +516,22 @@ export default function App() {
                   <AuctionCard
                     key={lot.id}
                     lot={lot}
-                    onSelectLot={lotItem => setSelectedLotForDetail(lotItem)}
-                    onQuickBid={lotItem => setSelectedLotForDetail(lotItem)}
+                    onSelectLot={lotItem => {
+                      if (!isClientAuthenticated && !isAdminAuthenticated) {
+                        setCurrentPage('cliente');
+                        showToast('🔒 Para acessar os leilões e dar lances, faça seu login ou cadastre-se.');
+                      } else {
+                        setSelectedLotForDetail(lotItem);
+                      }
+                    }}
+                    onQuickBid={lotItem => {
+                      if (!isClientAuthenticated && !isAdminAuthenticated) {
+                        setCurrentPage('cliente');
+                        showToast('🔒 Para dar lances nos leilões, faça seu login ou cadastre-se.');
+                      } else {
+                        setSelectedLotForDetail(lotItem);
+                      }
+                    }}
                     onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
                     currency={currency}
                     usdRate={usdRate}
@@ -577,7 +591,22 @@ export default function App() {
         {/* VIEW 2: LEILÕES (CATÁLOGO COMPLETO COM FILTROS) */}
         {/* ========================================================= */}
         {currentPage === 'leiloes' && (
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+          !isClientAuthenticated && !isAdminAuthenticated ? (
+            <ClientLoginGate
+              currentUser={currentUser}
+              onLoginSuccess={(user) => {
+                setIsClientAuthenticated(true);
+                setCurrentUser(user);
+                try {
+                  localStorage.setItem('us_client_auth', 'true');
+                  localStorage.setItem('us_iphone_client_user', JSON.stringify(user));
+                } catch (e) {}
+                showToast(`Bem-vindo, ${user.name}! Acesso ao catálogo de leilões liberado.`);
+              }}
+              onCancel={() => setCurrentPage('home')}
+            />
+          ) : (
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 mb-1">
@@ -798,6 +827,7 @@ export default function App() {
               </div>
             )}
           </section>
+          )
         )}
 
         {/* ========================================================= */}

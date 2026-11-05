@@ -33,6 +33,12 @@ export const Header: React.FC<HeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavClick = (page: AppPage) => {
+    if (page === 'leiloes' && !isClientAuthenticated && !isAdminAuthenticated) {
+      onNavigate('cliente');
+      setMobileMenuOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     onNavigate(page);
     setMobileMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -139,13 +145,16 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => handleNavClick('leiloes')}
-            className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex items-center gap-1.5 ${
               currentPage === 'leiloes'
                 ? 'bg-slate-800 text-amber-400 font-bold'
                 : 'hover:text-white hover:bg-slate-900'
             }`}
           >
-            Leilões
+            <span>Leilões</span>
+            {!isClientAuthenticated && !isAdminAuthenticated && (
+              <Lock className="w-3 h-3 text-amber-400 opacity-80" />
+            )}
           </button>
 
           <button
