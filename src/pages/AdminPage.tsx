@@ -797,7 +797,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // ----------------------------------------------------
   // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
   // ----------------------------------------------------
-  const processStockAppleRows = (rawRows: any[]) => {
+  const processStockAppleRows = (rawRows: any[], allowAllBrands = false) => {
     let approvedIPhones = 0;
     let approvedIPads = 0;
     let approvedWatches = 0;
@@ -828,8 +828,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const listPrice = parsePrice(priceRaw);
       const currency = normalizeField(row, 'Currency', 'currency', 'Moeda') || 'USD';
 
-      // 1. BRAND CHECK: Must be Apple (or model name contains iPhone, iPad, Apple Watch, or Watch)
-      const isAppleMake = make.trim().toLowerCase() === 'apple' ||
+      // 1. BRAND CHECK: Must be Apple unless allowAllBrands (Assurant) is active
+      const isAppleMake = allowAllBrands ||
+        make.trim().toLowerCase() === 'apple' ||
         /iphone|ipad|apple watch|\bwatch\b/i.test(model) ||
         /apple/i.test(description);
 
@@ -870,6 +871,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         deviceType = 'iPad';
       } else if (modelLower.includes('watch') || catLower === 'wearables') {
         deviceType = 'Apple Watch';
+      } else if (allowAllBrands) {
+        deviceType = 'iPhone';
       }
 
       if (!deviceType) {
@@ -1226,9 +1229,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           return {
             id: `${isAssurant ? 'asr' : 'apl'}-lot-ind-${Date.now()}-${idx}`,
             lotNumber: isAssurant ? `ASR-${it.itemNumber}` : `UF-${it.itemNumber}`,
-            title: `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
+            title: isAssurant
+              ? `Lote ${it.availableQuantity}x ${it.make || 'Apple'} ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`
+              : `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
             modelFamily: it.model,
-            oemBrand: 'Apple',
+            oemBrand: isAssurant ? (it.make || 'Apple') : 'Apple',
             quantity: it.availableQuantity,
             grade: it.grade,
             primaryStorage: it.capacity,
@@ -1506,8 +1511,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
           if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
             setPresetFormat('ASSURANT');
-            const { audit } = processStockAppleRows(rows);
-            showNotice(`Arquivo XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} aparelhos UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Arquivo XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/aparelhos UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
           } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
             setPresetFormat('STOCK_APPLE');
             const { audit } = processStockAppleRows(rows);
@@ -1553,8 +1559,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
           if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
             setPresetFormat('ASSURANT');
-            const { audit } = processStockAppleRows(rows);
-            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
           } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
             setPresetFormat('STOCK_APPLE');
             const { audit } = processStockAppleRows(rows);
@@ -1697,8 +1704,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
         if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
           setPresetFormat('ASSURANT');
-          const { audit } = processStockAppleRows(rows);
-          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rows, true);
+          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
         } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
           setPresetFormat('STOCK_APPLE');
           const { audit } = processStockAppleRows(rows);
@@ -1743,8 +1751,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
       if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
         setPresetFormat('ASSURANT');
-        const { audit } = processStockAppleRows(rows);
-        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        setStockAppleGroupMode('individual');
+        const { audit } = processStockAppleRows(rows, true);
+        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
       } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
         setPresetFormat('STOCK_APPLE');
         const { audit } = processStockAppleRows(rows);
@@ -2697,7 +2706,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
                   <button
                     type="button"
-                    onClick={() => setPresetFormat('ASSURANT')}
+                    onClick={() => {
+                      setPresetFormat('ASSURANT');
+                      setStockAppleGroupMode('individual');
+                    }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                       presetFormat === 'ASSURANT'
                         ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400'
@@ -2928,7 +2940,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Publicar {stockAppleGroupMode === 'grouped' ? `${stockAppleGroupedLots.length} Lotes no Atacado` : `${stockAppleAudit.approvedCount.toLocaleString()} Lotes Individuais`} no Hub</span>
+                    <span>Carregar e Publicar {stockAppleGroupMode === 'grouped' ? `${stockAppleGroupedLots.length} Lotes no Atacado` : `${stockAppleAudit.approvedCount.toLocaleString()} Lotes Individuais`} no Hub</span>
                   </button>
                 </div>
               </div>
