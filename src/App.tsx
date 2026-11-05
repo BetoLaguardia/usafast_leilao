@@ -183,29 +183,38 @@ export default function App() {
   // Helper to persist auctions (localStorage + backend /api/auctions for cross-device sync)
   const handleUpdateAuctions = (newAuctions: AuctionLot[]) => {
     hasLocalUpdateRef.current = true;
+    console.log(`[App.tsx] handleUpdateAuctions called with ${newAuctions.length} lots`);
     setAuctions(newAuctions);
     try {
       localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(newAuctions));
-    } catch (e) {}
+      console.log(`[App.tsx] Saved ${newAuctions.length} lots to localStorage key 'us_iphone_auctions_v1'`);
+    } catch (e: any) {
+      console.error('[App.tsx] Failed to save to localStorage:', e);
+    }
     fetch('/api/auctions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auctions: newAuctions })
-    }).catch(() => {});
+    })
+      .then(res => res.json())
+      .then(data => console.log('[App.tsx] Backend /api/auctions POST response:', data))
+      .catch(err => console.warn('[App.tsx] Backend /api/auctions POST failed (using local storage):', err));
   };
 
   useEffect(() => {
+    console.log('[App.tsx] Fetching initial auctions from /api/auctions...');
     fetch('/api/auctions')
       .then(res => res.json())
       .then(data => {
         if (!hasLocalUpdateRef.current && data && Array.isArray(data.auctions) && data.auctions.length > 0) {
+          console.log(`[App.tsx] Loaded ${data.auctions.length} lots from backend /api/auctions`);
           setAuctions(data.auctions);
           try {
             localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
           } catch (e) {}
         }
       })
-      .catch(() => {});
+      .catch(err => console.warn('[App.tsx] Initial fetch from /api/auctions failed:', err));
   }, []);
 
   // Real-time live bidding polling effect (connects to PHP or simulated live pool)

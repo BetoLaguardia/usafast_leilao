@@ -814,6 +814,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
   // ----------------------------------------------------
   const processStockAppleRows = (rawRows: any[], allowAllBrands = false) => {
+    console.log(`[XLSX/Stock Import] processStockAppleRows started with ${rawRows.length} raw rows. allowAllBrands=${allowAllBrands}`);
     let approvedIPhones = 0;
     let approvedIPads = 0;
     let approvedWatches = 0;
@@ -1027,6 +1028,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       discardedNonAppleCount
     };
 
+    console.log('[XLSX/Stock Import] Audit stats:', audit);
     setStockAppleAudit(audit);
     setStockAppleItems(processedItems);
 
@@ -1312,10 +1314,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         ? [...newLots, ...auctions.filter(a => a.sourceType !== targetSourceType)]
         : [...newLots, ...auctions];
 
+      console.log(`[XLSX/Stock Import] Publishing ${newLots.length} new lots. Total lots after merge: ${finalLots.length}. replaceExistingLots=${replaceExistingLots}`);
       onUpdateAuctions(finalLots);
       try {
         localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
-      } catch (e) {}
+        console.log(`[XLSX/Stock Import] Saved ${finalLots.length} lots to localStorage.`);
+      } catch (e: any) {
+        console.error('[XLSX/Stock Import] localStorage save error:', e);
+      }
 
       showNotice(`🎉 ${newLots.length} Lotes ${meta.label} (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
       setAdminTab('lots');
@@ -1496,6 +1502,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    console.log(`[XLSX Upload] File selected: "${file.name}", size: ${(file.size / 1024).toFixed(1)} KB, type: "${file.type}"`);
     setUploadedFileName(file.name);
     const isXml = file.name.toLowerCase().endsWith('.xml') || file.type.includes('xml');
     const isCsv = file.name.toLowerCase().endsWith('.csv');
@@ -1605,16 +1612,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
 
     // Standard binary reading for XLSX / XLS / XLX
+    console.log(`[XLSX Upload] Reading binary file "${file.name}" with XLSX.read...`);
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const buffer = evt.target?.result as ArrayBuffer;
         const wb = XLSX.read(buffer, { type: 'array' });
+        console.log(`[XLSX Upload] Workbook loaded. Sheets found: ${wb.SheetNames.join(', ')}`);
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        console.log(`[XLSX Upload] sheet_to_json extracted ${dataGrid.length} raw matrix rows.`);
 
         if (dataGrid.length === 0) {
+          console.warn('[XLSX Upload] dataGrid is empty!');
           showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
           return;
         }
@@ -1632,6 +1643,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           }
         }
 
+        console.log(`[XLSX Upload] Header row detected at index ${headerIdx}:`, dataGrid[headerIdx]);
         const headers = (dataGrid[headerIdx] as string[]).map(h => String(h || '').trim());
         const rawJson: any[] = [];
         for (let r = headerIdx + 1; r < dataGrid.length; r++) {
@@ -1646,6 +1658,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           }
         }
 
+        console.log(`[XLSX Upload] Transformed ${rawJson.length} objects from XLSX rows.`);
         if (rawJson.length === 0) {
           showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
           return;
