@@ -178,8 +178,11 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const hasLocalUpdateRef = React.useRef(false);
+
   // Helper to persist auctions (localStorage + backend /api/auctions for cross-device sync)
   const handleUpdateAuctions = (newAuctions: AuctionLot[]) => {
+    hasLocalUpdateRef.current = true;
     setAuctions(newAuctions);
     try {
       localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(newAuctions));
@@ -192,22 +195,17 @@ export default function App() {
   };
 
   useEffect(() => {
-    const fetchServerAuctions = () => {
-      fetch('/api/auctions')
-        .then(res => res.json())
-        .then(data => {
-          if (data && Array.isArray(data.auctions) && data.auctions.length > 0) {
-            setAuctions(data.auctions);
-            try {
-              localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
-            } catch (e) {}
-          }
-        })
-        .catch(() => {});
-    };
-    fetchServerAuctions();
-    const timer = setInterval(fetchServerAuctions, 5000);
-    return () => clearInterval(timer);
+    fetch('/api/auctions')
+      .then(res => res.json())
+      .then(data => {
+        if (!hasLocalUpdateRef.current && data && Array.isArray(data.auctions) && data.auctions.length > 0) {
+          setAuctions(data.auctions);
+          try {
+            localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Real-time live bidding polling effect (connects to PHP or simulated live pool)

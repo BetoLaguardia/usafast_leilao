@@ -60,6 +60,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   // Multi-Options Filters for Vigorous Auctions
   const [selectedModelFilter, setSelectedModelFilter] = useState<string>('all');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('all');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [selectedCapacityFilter, setSelectedCapacityFilter] = useState<string>('all');
   const [selectedAuctionHouseFilter, setSelectedAuctionHouseFilter] = useState<string>('all');
   const [selectedAuctionSystemFilter, setSelectedAuctionSystemFilter] = useState<'all' | 'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS'>('all');
@@ -137,8 +138,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
     setQuickBidLot(null);
   };
 
-  // Dynamic list of models and capacities present in active catalog
+  // Dynamic list of models, grades and auction houses present in active catalog
   const availableModels = Array.from(new Set(auctions.map(a => a.modelFamily))).filter(Boolean);
+  const availableGrades = Array.from(new Set(auctions.map(a => a.grade))).filter(Boolean);
   const availableAuctionHouses = Array.from(new Set(auctions.map(a => a.auctionHouse))).filter(Boolean);
 
   // Filtered devices for client
@@ -159,6 +161,12 @@ export const ClientePage: React.FC<ClientePageProps> = ({
       return false;
     }
     if (selectedGradeFilter !== 'all' && lot.grade !== selectedGradeFilter) return false;
+    if (selectedCategoryFilter !== 'all') {
+      const text = `${lot.modelFamily} ${lot.title} ${lot.description}`.toLowerCase();
+      if (selectedCategoryFilter === 'Tablets' && !/ipad|tablet/i.test(text)) return false;
+      if (selectedCategoryFilter === 'Smartwatch' && !/watch|wearable/i.test(text)) return false;
+      if (selectedCategoryFilter === 'Phones' && (/ipad|tablet|watch|wearable|macbook/i.test(text))) return false;
+    }
     if (selectedCapacityFilter !== 'all' && !lot.primaryStorage.toLowerCase().includes(selectedCapacityFilter.toLowerCase())) return false;
     if (selectedAuctionHouseFilter !== 'all' && lot.auctionHouse !== selectedAuctionHouseFilter) return false;
     if (selectedAuctionSystemFilter === 'VERIZON' && lot.sourceType !== 'VERIZON' && !/verizon/i.test(lot.auctionHouse)) return false;
@@ -367,7 +375,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 </select>
               </div>
 
-              {/* Filter 2: Grade */}
+              {/* Filter 2: Grade (Dinâmico conforme importado) */}
               <div>
                 <label className="text-[10px] text-slate-400 font-semibold block mb-1">Grade Estético:</label>
                 <select
@@ -376,11 +384,24 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
                 >
                   <option value="all">Todas as Grades</option>
-                  <option value="Grade A+">Grade A+ (Mint)</option>
-                  <option value="Grade A">Grade A (Excelente)</option>
-                  <option value="Grade B">Grade B (Muito Bom)</option>
-                  <option value="Grade C">Grade C (Econômico)</option>
-                  <option value="CPO Refurbished">CPO Refurbished</option>
+                  {availableGrades.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter 2b: Categoria (Phones, Tablets, Smartwatch) */}
+              <div>
+                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Categoria:</label>
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={e => setSelectedCategoryFilter(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
+                >
+                  <option value="all">Todas as Categorias</option>
+                  <option value="Phones">Phones</option>
+                  <option value="Tablets">Tablets</option>
+                  <option value="Smartwatch">Smartwatch</option>
                 </select>
               </div>
 
@@ -489,6 +510,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   setClientSearch('');
                   setSelectedModelFilter('all');
                   setSelectedGradeFilter('all');
+                  setSelectedCategoryFilter('all');
                   setSelectedCapacityFilter('all');
                   setSelectedAuctionHouseFilter('all');
                   setSelectedAuctionSystemFilter('all');

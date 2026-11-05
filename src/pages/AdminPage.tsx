@@ -2972,7 +2972,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileUpload}
-                  accept=".xlsx, .xls, .csv, .xml, text/xml, application/xml"
+                  accept=".xlsx, .xls, .xlx, .csv, .xml, text/xml, application/xml"
                   className="hidden"
                 />
                 <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
