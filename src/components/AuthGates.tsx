@@ -14,7 +14,8 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  Clock
 } from 'lucide-react';
 import { SystemUser } from '../types/auction';
 
@@ -248,6 +249,8 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPendingSuccessModal, setShowPendingSuccessModal] = useState(false);
+  const [pendingUserRegisteredName, setPendingUserRegisteredName] = useState('');
 
   // Login form state
   const [loginEmailOrDoc, setLoginEmailOrDoc] = useState('');
@@ -293,6 +296,19 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
       // Validate password
       const userExpectedPassword = (foundUser as any)?.password || DEFAULT_CLIENT_CREDENTIALS.password;
       if (foundUser && (cleanPass === userExpectedPassword || cleanPass === 'cliente123' || cleanPass === '123456')) {
+        // Check approval status
+        if (foundUser.approvalStatus === 'PENDING' || (!foundUser.verifiedStatus && foundUser.approvalStatus !== 'APPROVED' && foundUser.email !== DEFAULT_CLIENT_CREDENTIALS.email)) {
+          setErrorMessage('⏳ Seu cadastro foi recebido e está em análise pela nossa equipe de credenciamento. O acesso ao sistema de leilões será liberado assim que o Administrador aprovar.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (foundUser.approvalStatus === 'REJECTED') {
+          setErrorMessage('🚫 Seu cadastro foi suspenso ou recusado pela administração.');
+          setIsSubmitting(false);
+          return;
+        }
+
         if (rememberMe) {
           try {
             localStorage.setItem('us_client_auth', 'true');
@@ -338,7 +354,8 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
       whatsappNotificationEnabled: regWhatsappNotify,
       cpfCnpj: regDoc.trim(),
       biddingLimitUsd: 25000,
-      verifiedStatus: true,
+      verifiedStatus: false,
+      approvalStatus: 'PENDING',
       registeredDate: new Date().toLocaleDateString('pt-BR'),
       password: regPassword,
       role: 'client'
@@ -350,11 +367,11 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
         const list: SystemUser[] = saved ? JSON.parse(saved) : [];
         list.push(newUser);
         localStorage.setItem('us_registered_clients', JSON.stringify(list));
-        localStorage.setItem('us_iphone_client_user', JSON.stringify(newUser));
-        localStorage.setItem('us_client_auth', 'true');
       } catch (e) {}
 
-      onLoginSuccess(newUser);
+      setIsSubmitting(false);
+      setPendingUserRegisteredName(newUser.name);
+      setShowPendingSuccessModal(true);
     }, 400);
   };
 
@@ -363,6 +380,52 @@ export const ClientLoginGate: React.FC<ClientLoginGateProps> = ({
     setLoginPassword(DEFAULT_CLIENT_CREDENTIALS.password);
     setErrorMessage(null);
   };
+
+  if (showPendingSuccessModal) {
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden text-center space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/10">
+            <Clock className="w-8 h-8 animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+              CADASTRO ENVIADO PARA ANÁLISE
+            </span>
+            <h3 className="text-xl font-black text-white tracking-tight pt-2">
+              Seu Cadastro foi Recebido com Sucesso!
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+              Olá <strong className="text-white">{pendingUserRegisteredName}</strong>, recebemos os seus dados de credenciamento.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl text-left text-xs space-y-2">
+            <div className="flex items-start gap-2 text-amber-300 font-semibold">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>O que acontece agora?</span>
+            </div>
+            <p className="text-slate-400 leading-relaxed text-[11px]">
+              Seus dados foram encaminhados para análise cadastral da nossa equipe. Assim que o Administrador aprovar o seu cadastro no painel, o seu acesso completo aos leilões e lances será liberado.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowPendingSuccessModal(false);
+              setTab('login');
+              setLoginEmailOrDoc(regEmail);
+            }}
+            className="w-full py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-400/20"
+          >
+            Entendido, Ir para Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">

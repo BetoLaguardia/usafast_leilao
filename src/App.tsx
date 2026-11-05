@@ -448,26 +448,48 @@ export default function App() {
               totalAuctionsCount={auctions.length}
             />
 
-            {/* Quick Admin Banner */}
-            <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-y border-amber-500/20 py-3.5 px-4">
-              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2">
-                  <List className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="font-semibold text-white">
-                    Sistema consolidado com os maiores leilões americanos e marketplaces.
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setCurrentPage('admin')}
-                    className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Acessar Painel Administrativo</span>
-                  </button>
+            {/* Quick Banner: Only show Admin Panel / Spreadsheet import link to logged in users */}
+            {isAdminAuthenticated || isClientAuthenticated ? (
+              <div className="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border-y border-amber-500/20 py-3.5 px-4">
+                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <List className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-semibold text-white">
+                      Sistema consolidado com os maiores leilões americanos e marketplaces.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setCurrentPage('admin')}
+                      className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Painel de Importação & Controle Admin</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-y border-slate-800 py-3 px-4">
+                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Área de Leilões dos EUA: Para visualizar lotes completos, laudos de IMEI ou gerenciar planilhas, faça seu login.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setCurrentPage('cliente')}
+                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>Entrar ou Cadastrar-se</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Destaques de Leilões na Home */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-6">
@@ -578,13 +600,23 @@ export default function App() {
                   <Gavel className="w-3.5 h-3.5 text-amber-400" />
                   <span>Terminal de Lances</span>
                 </button>
-                <button
-                  onClick={() => setCurrentPage('admin')}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Importar Planilha</span>
-                </button>
+                {isAdminAuthenticated || isClientAuthenticated ? (
+                  <button
+                    onClick={() => setCurrentPage('admin')}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Importar Planilha</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setCurrentPage('cliente')}
+                    className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-2 shadow"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Entrar para Importar</span>
+                  </button>
+                )}
               </div>
             </div>
 

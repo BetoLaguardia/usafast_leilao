@@ -76,6 +76,7 @@ export interface SystemUser {
   registeredDate: string;
   password?: string;
   role?: 'client' | 'admin';
+  approvalStatus?: 'APPROVED' | 'PENDING' | 'REJECTED';
 }
 
 export type OfferStatusType = 'Aceita' | 'Recusada' | 'Em Análise' | 'Contra-Oferta' | 'Vencendo' | 'Homologada / Arrematada' | 'Superada';

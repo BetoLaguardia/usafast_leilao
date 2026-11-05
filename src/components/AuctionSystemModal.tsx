@@ -57,20 +57,27 @@ export const AuctionSystemModal: React.FC<AuctionSystemModalProps> = ({
     e.preventDefault();
     if (!formData.name || !formData.email) return;
 
-    onUpdateUser({
+    const newUser: SystemUser = {
       name: formData.name,
       email: formData.email,
       cpfCnpj: formData.cpfCnpj || '00.000.000/0001-99',
       phone: formData.phone || '+55 (11) 99876-5432',
+      whatsapp: formData.phone || '+55 (11) 99876-5432',
       biddingLimitUsd: 25000,
-      verifiedStatus: true,
-      registeredDate: new Date().toLocaleDateString('pt-BR')
-    });
+      verifiedStatus: false,
+      approvalStatus: 'PENDING',
+      registeredDate: new Date().toLocaleDateString('pt-BR'),
+      role: 'client'
+    };
+
+    try {
+      const saved = localStorage.getItem('us_registered_clients');
+      const list: SystemUser[] = saved ? JSON.parse(saved) : [];
+      list.push(newUser);
+      localStorage.setItem('us_registered_clients', JSON.stringify(list));
+    } catch (err) {}
+
     setRegisteredSuccess(true);
-    setTimeout(() => {
-      setRegisteredSuccess(false);
-      setActiveTab('terminal');
-    }, 1800);
   };
 
   const handleExecuteBid = () => {
@@ -342,12 +349,22 @@ export const AuctionSystemModal: React.FC<AuctionSystemModalProps> = ({
               </div>
 
               {registeredSuccess ? (
-                <div className="p-8 text-center bg-slate-950 rounded-xl border border-emerald-500/40 space-y-3">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-                  <h4 className="text-base font-bold text-white">Cadastro Aprovado no Sistema de Leilões!</h4>
+                <div className="p-8 text-center bg-slate-950 rounded-xl border border-amber-500/40 space-y-3">
+                  <Clock className="w-12 h-12 text-amber-400 mx-auto animate-pulse" />
+                  <h4 className="text-base font-bold text-white">Cadastro Recebido! Aguardando Análise</h4>
                   <p className="text-xs text-slate-300 max-w-md mx-auto">
-                    Seu limite de arrematação de $25.000 USD foi liberado e seu endereço de redirecionamento no galpão de Miami foi ativado. Redirecionando para o terminal...
+                    Seu cadastro foi registrado com sucesso e foi encaminhado para análise pela nossa equipe de credenciamento. Assim que o Administrador aprovar o seu cadastro no painel, seu acesso completo será liberado.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegisteredSuccess(false);
+                      setActiveTab('terminal');
+                    }}
+                    className="mt-2 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow"
+                  >
+                    Entendido
+                  </button>
                 </div>
               ) : (
                 <form onSubmit={handleRegisterSubmit} className="space-y-4">

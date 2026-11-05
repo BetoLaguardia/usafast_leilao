@@ -2301,31 +2301,94 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // ----------------------------------------------------
   // CLIENTES / PAINEL DE ARREMATANTES
   // ----------------------------------------------------
-  const [clientsList, setClientsList] = useState<SystemUser[]>([
-    currentUser,
-    {
-      name: 'EletroCell Lojistas Associados',
-      email: 'compras@eletrocell.com.br',
-      cpfCnpj: '24.119.802/0001-90',
-      phone: '+55 (31) 98765-4321',
-      biddingLimitUsd: 50000,
-      verifiedStatus: true,
-      registeredDate: '15/01/2026'
-    },
-    {
-      name: 'Rodrigo Barbosa Silva',
-      email: 'rodrigo.silva@gmail.com',
-      cpfCnpj: '348.910.228-11',
-      phone: '+55 (21) 97722-3344',
-      biddingLimitUsd: 10000,
-      verifiedStatus: false,
-      registeredDate: '03/02/2026'
-    }
-  ]);
+  const [clientsList, setClientsList] = useState<SystemUser[]>(() => {
+    try {
+      const saved = localStorage.getItem('us_registered_clients');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { ...currentUser, approvalStatus: 'APPROVED', verifiedStatus: true },
+      {
+        name: 'Carlos Eduardo Mendes (ImportTech)',
+        email: 'carlos.mendes@importtech.com.br',
+        cpfCnpj: '12.345.678/0001-90',
+        phone: '+55 (11) 99876-5432',
+        biddingLimitUsd: 25000,
+        verifiedStatus: true,
+        approvalStatus: 'APPROVED',
+        registeredDate: '01/02/2026'
+      },
+      {
+        name: 'EletroCell Lojistas Associados',
+        email: 'compras@eletrocell.com.br',
+        cpfCnpj: '24.119.802/0001-90',
+        phone: '+55 (31) 98765-4321',
+        biddingLimitUsd: 50000,
+        verifiedStatus: true,
+        approvalStatus: 'APPROVED',
+        registeredDate: '15/01/2026'
+      },
+      {
+        name: 'Rodrigo Barbosa Silva',
+        email: 'rodrigo.silva@gmail.com',
+        cpfCnpj: '348.910.228-11',
+        phone: '+55 (21) 97722-3344',
+        biddingLimitUsd: 10000,
+        verifiedStatus: false,
+        approvalStatus: 'PENDING',
+        registeredDate: '03/02/2026'
+      }
+    ];
+  });
+
+  const saveClientsToStorage = (newList: SystemUser[]) => {
+    setClientsList(newList);
+    try {
+      localStorage.setItem('us_registered_clients', JSON.stringify(newList));
+    } catch (e) {}
+  };
+
+  const handleApproveClient = (emailOrIndex: string | number) => {
+    const updated = clientsList.map((c, i) => {
+      if (i === emailOrIndex || c.email === emailOrIndex) {
+        return {
+          ...c,
+          approvalStatus: 'APPROVED' as const,
+          verifiedStatus: true,
+          biddingLimitUsd: c.biddingLimitUsd > 0 ? c.biddingLimitUsd : 25000
+        };
+      }
+      return c;
+    });
+    saveClientsToStorage(updated);
+    showNotice(`✅ Cadastro de cliente aprovado com sucesso! Acesso liberado.`, 'success');
+  };
+
+  const handleRejectClient = (emailOrIndex: string | number) => {
+    const updated = clientsList.map((c, i) => {
+      if (i === emailOrIndex || c.email === emailOrIndex) {
+        return {
+          ...c,
+          approvalStatus: 'REJECTED' as const,
+          verifiedStatus: false
+        };
+      }
+      return c;
+    });
+    saveClientsToStorage(updated);
+    showNotice(`🚫 Cadastro de cliente rejeitado/suspenso.`, 'error');
+  };
 
   const handleToggleClientVerify = (idx: number) => {
-    setClientsList(prev => prev.map((c, i) => i === idx ? { ...c, verifiedStatus: !c.verifiedStatus } : c));
-    showNotice('Status do cliente atualizado com sucesso!');
+    const target = clientsList[idx];
+    if (target.verifiedStatus) {
+      handleRejectClient(idx);
+    } else {
+      handleApproveClient(idx);
+    }
   };
 
   // Filtering and pagination for Stock Apple preview table
@@ -4320,60 +4383,155 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       {/* TAB 4: CLIENTES & PAINEL DE ARREMATANTES */}
       {/* ======================================================== */}
       {adminTab === 'clients' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-white">Base de Arrematantes Credenciados</h2>
-              <p className="text-xs text-slate-400">
-                Controle os limites em dólares e aprovação de habilitação cadastral
-              </p>
+        <div className="space-y-6">
+          {/* SECTION 1: CADASTROS PENDENTES DE ANÁLISE */}
+          <div className="p-5 bg-amber-500/5 border border-amber-500/30 rounded-2xl space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center">
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-white">Cadastros Pendentes de Análise</h2>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs font-mono">
+                      {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).length} Pendentes
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Novos clientes cadastrados no portal aguardando aprovação para liberação de acesso ao sistema e lances.
+                  </p>
+                </div>
+              </div>
             </div>
+
+            {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).length === 0 ? (
+              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400 text-center">
+                ✓ Nenhum cadastro pendente de aprovação no momento. Todos os clientes ativos foram revisados.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-amber-500/20 rounded-xl bg-slate-950/80">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 text-[11px] bg-slate-900/80">
+                      <th className="py-2.5 px-3">Nome / Razão Social</th>
+                      <th className="py-2.5 px-3">E-mail</th>
+                      <th className="py-2.5 px-3">CPF / CNPJ</th>
+                      <th className="py-2.5 px-3">WhatsApp / Telefone</th>
+                      <th className="py-2.5 px-3">Data Cadastro</th>
+                      <th className="py-2.5 px-3 text-right">Ação de Credenciamento</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                    {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).map((client, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
+                        <td className="py-3 px-3 font-bold text-white flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                          {client.name}
+                        </td>
+                        <td className="py-3 px-3 text-amber-200/90 font-mono">{client.email}</td>
+                        <td className="py-3 px-3 font-mono">{client.cpfCnpj}</td>
+                        <td className="py-3 px-3 font-mono text-slate-300">{client.phone}</td>
+                        <td className="py-3 px-3 text-slate-400">{client.registeredDate || 'Recente'}</td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleApproveClient(client.email)}
+                              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Aprovar Cadastro</span>
+                            </button>
+                            <button
+                              onClick={() => handleRejectClient(client.email)}
+                              className="px-2.5 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-semibold rounded-lg text-xs transition-colors"
+                            >
+                              <span>Rejeitar</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
-                  <th className="py-3 px-3">Arrematante / Razão Social</th>
-                  <th className="py-3 px-3">E-mail</th>
-                  <th className="py-3 px-3">CPF / CNPJ</th>
-                  <th className="py-3 px-3">Telefone WhatsApp</th>
-                  <th className="py-3 px-3">Limite de Arrematação</th>
-                  <th className="py-3 px-3">Status de Habilitação</th>
-                  <th className="py-3 px-3 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {clientsList.map((client, idx) => (
-                  <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-white">{client.name}</td>
-                    <td className="py-3 px-3 text-slate-400">{client.email}</td>
-                    <td className="py-3 px-3 font-mono">{client.cpfCnpj}</td>
-                    <td className="py-3 px-3 font-mono text-slate-300">{client.phone}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                      ${client.biddingLimitUsd.toLocaleString()} USD
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                        client.verifiedStatus
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                      }`}>
-                        {client.verifiedStatus ? '● Habilitado / Verificado' : '○ Em Análise'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      <button
-                        onClick={() => handleToggleClientVerify(idx)}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-medium transition-colors"
-                      >
-                        {client.verifiedStatus ? 'Suspender' : 'Aprovar'}
-                      </button>
-                    </td>
+          {/* SECTION 2: BASE GERAL DE ARREMATANTES */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-white">Base Completa de Arrematantes Credenciados</h2>
+                <p className="text-xs text-slate-400">
+                  Gerencie limites operacionais em dólares e permissões de acesso
+                </p>
+              </div>
+              <div className="text-xs font-mono text-slate-400">
+                Total: <strong className="text-white">{clientsList.length}</strong> · Aprovados: <strong className="text-emerald-400">{clientsList.filter(c => c.verifiedStatus || c.approvalStatus === 'APPROVED').length}</strong>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
+                    <th className="py-3 px-3">Arrematante / Razão Social</th>
+                    <th className="py-3 px-3">E-mail</th>
+                    <th className="py-3 px-3">CPF / CNPJ</th>
+                    <th className="py-3 px-3">Telefone WhatsApp</th>
+                    <th className="py-3 px-3">Limite de Arrematação</th>
+                    <th className="py-3 px-3">Status de Habilitação</th>
+                    <th className="py-3 px-3 text-right">Ação</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {clientsList.map((client, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-3 font-semibold text-white">{client.name}</td>
+                      <td className="py-3 px-3 text-slate-400">{client.email}</td>
+                      <td className="py-3 px-3 font-mono">{client.cpfCnpj}</td>
+                      <td className="py-3 px-3 font-mono text-slate-300">{client.phone}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-amber-400">
+                        ${client.biddingLimitUsd.toLocaleString()} USD
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                          client.approvalStatus === 'APPROVED' || client.verifiedStatus
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : client.approvalStatus === 'REJECTED'
+                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        }`}>
+                          {client.approvalStatus === 'APPROVED' || client.verifiedStatus
+                            ? '● Habilitado / Aprovado'
+                            : client.approvalStatus === 'REJECTED'
+                            ? '✕ Suspenso / Rejeitado'
+                            : '○ Em Análise'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        {client.verifiedStatus || client.approvalStatus === 'APPROVED' ? (
+                          <button
+                            onClick={() => handleRejectClient(client.email)}
+                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium transition-colors"
+                          >
+                            Suspender
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleApproveClient(client.email)}
+                            className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded text-[11px] font-bold transition-colors shadow-sm"
+                          >
+                            Aprovar Cadastro
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
