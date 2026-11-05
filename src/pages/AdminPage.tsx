@@ -1604,12 +1604,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       return;
     }
 
-    // Standard binary reading for XLSX / XLS
+    // Standard binary reading for XLSX / XLS / XLX
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const buffer = evt.target?.result as ArrayBuffer;
+        const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
@@ -1619,9 +1619,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           return;
         }
 
-        // Find header row in first 10 rows
+        // Find header row in first 20 rows
         let headerIdx = 0;
-        for (let r = 0; r < Math.min(10, dataGrid.length); r++) {
+        for (let r = 0; r < Math.min(20, dataGrid.length); r++) {
           const rowStr = (dataGrid[r] || []).map((c: any) => String(c || '').toLowerCase()).join(' ');
           if (rowStr.includes('item') && (rowStr.includes('warehouse') || rowStr.includes('model') || rowStr.includes('category') || rowStr.includes('lock'))) {
             headerIdx = r;
@@ -1704,7 +1704,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleProcessPastedText = () => {
