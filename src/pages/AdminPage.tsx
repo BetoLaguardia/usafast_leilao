@@ -1275,7 +1275,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               cleanEsn: true,
               mdmFree: true
             },
-            manifest: [
+            manifest: approvedItems.length <= 80 ? [
               {
                 id: `man-ind-${idx}`,
                 model: it.model,
@@ -1293,7 +1293,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 itemDescription: it.description,
                 qty: it.availableQuantity
               }
-            ],
+            ] : [],
             bidsHistory: [
               {
                 id: `bid-ind-${idx}`,
@@ -1609,10 +1609,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     reader.onload = (evt) => {
       try {
         const buffer = evt.target?.result as ArrayBuffer;
-        const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const wb = XLSX.read(buffer, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
         if (dataGrid.length === 0) {
           showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
