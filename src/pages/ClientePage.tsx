@@ -62,8 +62,38 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('all');
   const [selectedCapacityFilter, setSelectedCapacityFilter] = useState<string>('all');
   const [selectedAuctionHouseFilter, setSelectedAuctionHouseFilter] = useState<string>('all');
+  const [selectedAuctionSystemFilter, setSelectedAuctionSystemFilter] = useState<'all' | 'VERIZON' | 'ASSURANT' | 'STOCK_APPLE'>('all');
   const [selectedLotTypeFilter, setSelectedLotTypeFilter] = useState<string>('all');
   const [clientSearch, setClientSearch] = useState('');
+
+  // WhatsApp notification preferences
+  const [whatsappNumber, setWhatsappNumber] = useState<string>(currentUser.whatsapp || currentUser.phone || '');
+  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(currentUser.whatsappNotificationEnabled ?? true);
+
+  // Sync Admin Offers for live status alerts
+  const [adminOffers, setAdminOffers] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('us_admin_offers_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  React.useEffect(() => {
+    const syncOffers = () => {
+      try {
+        const saved = localStorage.getItem('us_admin_offers_v1');
+        if (saved) setAdminOffers(JSON.parse(saved));
+      } catch (e) {}
+    };
+    window.addEventListener('offers_updated', syncOffers);
+    window.addEventListener('storage', syncOffers);
+    return () => {
+      window.removeEventListener('offers_updated', syncOffers);
+      window.removeEventListener('storage', syncOffers);
+    };
+  }, []);
   
   // View mode for client catalog: 'list' (default) or 'cards'
   const [viewMode, setViewMode] = useState<'list' | 'cards'>('list');
@@ -128,6 +158,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
     if (selectedGradeFilter !== 'all' && lot.grade !== selectedGradeFilter) return false;
     if (selectedCapacityFilter !== 'all' && !lot.primaryStorage.toLowerCase().includes(selectedCapacityFilter.toLowerCase())) return false;
     if (selectedAuctionHouseFilter !== 'all' && lot.auctionHouse !== selectedAuctionHouseFilter) return false;
+    if (selectedAuctionSystemFilter === 'VERIZON' && lot.sourceType !== 'VERIZON' && !/verizon/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'ASSURANT' && lot.sourceType !== 'ASSURANT' && !/assurant/i.test(lot.auctionHouse)) return false;
+    if (selectedAuctionSystemFilter === 'STOCK_APPLE' && lot.sourceType !== 'STOCK_APPLE' && !/stock/i.test(lot.auctionHouse)) return false;
     if (selectedLotTypeFilter === 'wholesale' && lot.quantity <= 1) return false;
     if (selectedLotTypeFilter === 'single' && lot.quantity > 1) return false;
     return true;
@@ -291,7 +324,22 @@ export const ClientePage: React.FC<ClientePageProps> = ({
             </div>
 
             {/* Filter Dropdowns Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-1 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1 text-xs">
+              {/* Filter 0: Auction System (Verizon / Assurant / Stock Apple) */}
+              <div>
+                <label className="text-[10px] text-amber-400 font-bold block mb-1">Selecionar Leilão:</label>
+                <select
+                  value={selectedAuctionSystemFilter}
+                  onChange={e => setSelectedAuctionSystemFilter(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-bold"
+                >
+                  <option value="all">Todos os Leilões</option>
+                  <option value="VERIZON">★ Leilão VERIZON</option>
+                  <option value="ASSURANT">★ Leilão ASSURANT</option>
+                  <option value="STOCK_APPLE">🍏 Estoque Apple</option>
+                </select>
+              </div>
+
               {/* Filter 1: Model */}
               <div>
                 <label className="text-[10px] text-slate-400 font-semibold block mb-1">Modelo:</label>
@@ -775,6 +823,66 @@ export const ClientePage: React.FC<ClientePageProps> = ({
             </div>
           </div>
 
+          {/* Live Offer Status Alerts from Admin */}
+          {adminOffers.filter(o => o.clientEmail === currentUser.email || o.clientName === currentUser.name).length > 0 && (
+            <div className="space-y-2.5">
+              {adminOffers
+                .filter(o => o.clientEmail === currentUser.email || o.clientName === currentUser.name)
+                .map(offer => (
+                  <div
+                    key={offer.id}
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                      offer.status === 'Aceita'
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                        : offer.status === 'Contra-Oferta'
+                        ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+                        : offer.status === 'Em Análise'
+                        ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                        : offer.status === 'Recusada'
+                        ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-amber-400">{offer.lotNumber}</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-950/70 font-bold uppercase text-[10px]">
+                          Status: {offer.status}
+                        </span>
+                      </div>
+                      <p className="text-xs">
+                        Sua oferta de <strong>${offer.amountUsd.toLocaleString()} USD</strong> ({offer.lotTitle}) está com status <strong>{offer.status}</strong>.
+                        {offer.status === 'Contra-Oferta' && offer.counterOfferUsd && (
+                          <span className="text-indigo-300 font-bold ml-1">
+                            Nova contra-oferta do leiloeiro: ${offer.counterOfferUsd.toLocaleString()} USD.
+                          </span>
+                        )}
+                        {offer.adminNote && <span className="block text-[11px] text-slate-400 mt-0.5">Obs: {offer.adminNote}</span>}
+                      </p>
+                    </div>
+                    {offer.status === 'Contra-Oferta' && offer.counterOfferUsd && (
+                      <button
+                        onClick={() => {
+                          const updated = adminOffers.map(o =>
+                            o.id === offer.id ? { ...o, status: 'Aceita', amountUsd: offer.counterOfferUsd } : o
+                          );
+                          setAdminOffers(updated);
+                          try {
+                            localStorage.setItem('us_admin_offers_v1', JSON.stringify(updated));
+                            window.dispatchEvent(new Event('offers_updated'));
+                          } catch (e) {}
+                          showSuccess(`Contra-oferta de $${offer.counterOfferUsd.toLocaleString()} USD aceita no lote ${offer.lotNumber}!`);
+                        }}
+                        className="px-3.5 py-2 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-lg text-xs shrink-0 transition-colors"
+                      >
+                        Aceitar Contra-Oferta (${offer.counterOfferUsd.toLocaleString()} USD)
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+
           {userBids.length === 0 ? (
             <div className="p-12 text-center bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl space-y-3">
               <Gavel className="w-10 h-10 text-slate-600 mx-auto" />
@@ -915,6 +1023,36 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 <span className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
                   Verificado
                 </span>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 space-y-2.5">
+                <span className="text-emerald-400 font-bold block text-xs">Notificações de Ofertas via WhatsApp</span>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1">Número WhatsApp (com DDI/DDD):</label>
+                  <input
+                    type="text"
+                    value={whatsappNumber}
+                    onChange={(e) => setWhatsappNumber(e.target.value)}
+                    placeholder="+55 11 99999-9999"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={whatsappEnabled}
+                    onChange={(e) => setWhatsappEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded accent-emerald-500"
+                  />
+                  <span>Receber avisos de Aceite, Recusa, Análise e Contra-Oferta no WhatsApp</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => showSuccess('Preferências de notificação WhatsApp salvas com sucesso!')}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-colors"
+                >
+                  Salvar Preferências WhatsApp
+                </button>
               </div>
             </div>
           </div>

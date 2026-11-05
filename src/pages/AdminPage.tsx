@@ -1101,7 +1101,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         totalQuantity: g.totalQuantity,
         unitPriceUsd: avgUnitPrice,
         calculatedStartingBidUsd,
-        calculatedCurrentBidUsd,
+        calculatedCurrentBidUsd: Math.round(g.unitPriceSum),
         calculatedRetailBrl,
         colorHighlights: Array.from(g.colors).slice(0, 4),
         manifest,
@@ -1158,12 +1158,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
 
     try {
+      const isAssurant = presetFormat === 'ASSURANT';
+      const markupPerUnit = isAssurant && addAssurantFiveUsd ? assurantMarkupAmount : 0;
       let newLots: AuctionLot[] = [];
 
       if (stockAppleGroupMode === 'grouped' && stockAppleGroupedLots.length > 0) {
         newLots = stockAppleGroupedLots.map((g, idx) => ({
-          id: `apl-lot-grp-${Date.now()}-${idx}`,
-          lotNumber: g.lotNumber,
+          id: `${isAssurant ? 'asr' : 'apl'}-lot-grp-${Date.now()}-${idx}`,
+          lotNumber: isAssurant ? `ASR-${g.lotNumber.replace(/^UF-/, '')}` : g.lotNumber,
           title: g.title,
           modelFamily: g.modelFamily,
           oemBrand: 'Apple',
@@ -1174,10 +1176,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           batteryHealthRange: '88% - 100% (Verificado Apple)',
           carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
           imeiStatus: 'Clean ESN / 100% Verificado',
-          auctionHouse: `USAFAST Stock Hub (${g.warehouse})`,
-          location: g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12',
-          startingBidUsd: g.calculatedStartingBidUsd,
-          currentBidUsd: g.calculatedCurrentBidUsd,
+          auctionHouse: isAssurant ? 'Assurant Liquidation Hub' : `USAFAST Stock Hub (${g.warehouse})`,
+          location: isAssurant ? 'Assurant Hub - Miami / Orlando' : (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12'),
+          startingBidUsd: Math.round(g.calculatedStartingBidUsd + (g.totalQuantity * markupPerUnit)),
+          currentBidUsd: Math.round(g.calculatedCurrentBidUsd + (g.totalQuantity * markupPerUnit)),
           reservePriceMet: true,
           estimatedBrazilRetailBrl: g.calculatedRetailBrl,
           totalBidsCount: Math.floor(Math.random() * 12) + 2,
@@ -1206,12 +1208,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               timestamp: 'Início do Leilão'
             }
           ],
-          sourceType: 'STOCK_APPLE'
+          sourceType: isAssurant ? 'ASSURANT' : 'STOCK_APPLE'
         }));
       } else {
         // Individual item mode
         newLots = approvedItems.map((it, idx) => {
-          const totalCurrentBidUsd = Math.round(it.listPrice * it.availableQuantity);
+          const unitPriceWithMarkup = it.listPrice + markupPerUnit;
+          const totalCurrentBidUsd = Math.round(unitPriceWithMarkup * it.availableQuantity);
           const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
@@ -1221,8 +1224,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           else if (it.availableQuantity > 3) imageUrl = '/images/iphone_lot_wholesale_inspection_1793849011081.jpg';
 
           return {
-            id: `apl-lot-ind-${Date.now()}-${idx}`,
-            lotNumber: `UF-${it.itemNumber}`,
+            id: `${isAssurant ? 'asr' : 'apl'}-lot-ind-${Date.now()}-${idx}`,
+            lotNumber: isAssurant ? `ASR-${it.itemNumber}` : `UF-${it.itemNumber}`,
             title: `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
             modelFamily: it.model,
             oemBrand: 'Apple',
@@ -1233,8 +1236,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
             batteryHealthRange: '88% - 100% (Verificado)',
             carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
             imeiStatus: 'Clean ESN / 100% Verificado',
-            auctionHouse: `USAFAST Stock Hub (${it.warehouse})`,
-            location: it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12',
+            auctionHouse: isAssurant ? 'Assurant Liquidation Hub' : `USAFAST Stock Hub (${it.warehouse})`,
+            location: isAssurant ? 'Assurant Hub - Miami / Orlando' : (it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12'),
             startingBidUsd,
             currentBidUsd: totalCurrentBidUsd,
             reservePriceMet: true,
@@ -1283,7 +1286,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 timestamp: 'Início do Leilão'
               }
             ],
-            sourceType: 'STOCK_APPLE'
+            sourceType: isAssurant ? 'ASSURANT' : 'STOCK_APPLE'
           };
         });
       }
@@ -1297,7 +1300,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
       } catch (e) {}
 
-      showNotice(`🎉 ${newLots.length} Lotes Apple Desbloqueados (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
+      showNotice(`🎉 ${newLots.length} Lotes ${isAssurant ? `ASSURANT (+$${markupPerUnit} USD/un)` : 'Apple Desbloqueados'} (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
       setAdminTab('lots');
     } catch (err: any) {
       showNotice(`Falha ao publicar lotes Apple: ${err?.message}`, 'error');
@@ -1324,10 +1327,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       </Row>
       <Row>
         <Cell><Data ss:Type="String">UF-XML-01</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 15x iPhone 16 Pro Max 256GB - Grade A(T) DNA (USAFAST Hub Miami)</Data></Cell>
+        <Cell><Data ss:Type="String">Lote 15x iPhone 16 Pro Max 256GB - Grade DNA (USAFAST Hub Miami)</Data></Cell>
         <Cell><Data ss:Type="String">Apple</Data></Cell>
         <Cell><Data ss:Type="String">iPhone 16 Pro Max</Data></Cell>
-        <Cell><Data ss:Type="String">A(T)</Data></Cell>
+        <Cell><Data ss:Type="String">DNA</Data></Cell>
         <Cell><Data ss:Type="Number">15</Data></Cell>
         <Cell><Data ss:Type="String">256GB</Data></Cell>
         <Cell><Data ss:Type="String">Desert Titanium</Data></Cell>
@@ -1338,10 +1341,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       </Row>
       <Row>
         <Cell><Data ss:Type="String">UF-XML-02</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 25x iPhone 15 Pro 128GB - Grade B(T) DNB Natural Titanium</Data></Cell>
+        <Cell><Data ss:Type="String">Lote 25x iPhone 15 Pro 128GB - Grade DNB Natural Titanium</Data></Cell>
         <Cell><Data ss:Type="String">Apple</Data></Cell>
         <Cell><Data ss:Type="String">iPhone 15 Pro</Data></Cell>
-        <Cell><Data ss:Type="String">B(T)</Data></Cell>
+        <Cell><Data ss:Type="String">DNB</Data></Cell>
         <Cell><Data ss:Type="Number">25</Data></Cell>
         <Cell><Data ss:Type="String">128GB</Data></Cell>
         <Cell><Data ss:Type="String">Natural Titanium</Data></Cell>
@@ -1352,10 +1355,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       </Row>
       <Row>
         <Cell><Data ss:Type="String">UF-XML-03</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 40x iPhone 14 128GB - Grade C(T) DNC Midnight Black</Data></Cell>
+        <Cell><Data ss:Type="String">Lote 40x iPhone 14 128GB - Grade DNC Midnight Black</Data></Cell>
         <Cell><Data ss:Type="String">Apple</Data></Cell>
         <Cell><Data ss:Type="String">iPhone 14</Data></Cell>
-        <Cell><Data ss:Type="String">C(T)</Data></Cell>
+        <Cell><Data ss:Type="String">DNC</Data></Cell>
         <Cell><Data ss:Type="Number">40</Data></Cell>
         <Cell><Data ss:Type="String">128GB</Data></Cell>
         <Cell><Data ss:Type="String">Midnight Black</Data></Cell>
@@ -1367,6 +1370,93 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     </Table>
   </Worksheet>
 </Workbook>`;
+
+  const SAMPLE_ASSURANT_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<StockList lastUpdated="11/05/2026 04:11AM CST">
+  <Item>
+    <ItemNumber>2395677</ItemNumber>
+    <Warehouse>A02-ASSURANT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 14</Model>
+    <ModelNumber>A2649</ModelNumber>
+    <Capacity>256GB</Capacity>
+    <Description>Apple / iPhone 14 / A2649 / 256GB / GSM / Blue / UNL / UNLOCKED / DLS C</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Blue</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>6</AvailableQuantity>
+    <ListPrice>233.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2395894</ItemNumber>
+    <Warehouse>A02-ASSURANT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 14 Pro</Model>
+    <ModelNumber>A2650</ModelNumber>
+    <Capacity>256GB</Capacity>
+    <Description>Apple / iPhone 14 Pro / A2650 / 256GB / GSM / Space Black / UNL / UNLOCKED / DLS C</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Space Black</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>10</AvailableQuantity>
+    <ListPrice>345.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2501696</ItemNumber>
+    <Warehouse>A02-ASSURANT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 16 Pro Max</Model>
+    <ModelNumber>A3084</ModelNumber>
+    <Capacity>256GB</Capacity>
+    <Description>Apple / iPhone 16 Pro Max / A3084 / 256GB / GSM / Black Titanium / UNL / UNLOCKED / DLS C</Description>
+    <Carrier>UNL</Carrier>
+    <LockStatus>UNLOCKED</LockStatus>
+    <Color>Black Titanium</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>14</AvailableQuantity>
+    <ListPrice>505.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+  <Item>
+    <ItemNumber>2380459</ItemNumber>
+    <Warehouse>A02-ASSURANT</Warehouse>
+    <Category>Phones</Category>
+    <Make>Apple</Make>
+    <Model>iPhone 14</Model>
+    <ModelNumber>A2649</ModelNumber>
+    <Capacity>128GB</Capacity>
+    <Description>Apple / iPhone 14 / A2649 / 128GB / GSM / Blue / OTH / LOCKED / DLS C</Description>
+    <Carrier>OTH</Carrier>
+    <LockStatus>LOCKED</LockStatus>
+    <Color>Blue</Color>
+    <Grade>DLS C</Grade>
+    <AvailableQuantity>2</AvailableQuantity>
+    <ListPrice>158.00</ListPrice>
+    <Currency>USD</Currency>
+  </Item>
+</StockList>`;
+
+  const handleLoadSampleAssurantXml = () => {
+    try {
+      const rows = parseXmlSpreadsheet(SAMPLE_ASSURANT_XML);
+      const headers = Object.keys(rows[0] || {});
+      setRawHeaders(headers);
+      setParsedPreviewRows(rows);
+      setUploadedFileName('leilao_assurant_unlocked.xml');
+      setPresetFormat('ASSURANT');
+      const { audit } = processStockAppleRows(rows);
+      showNotice(`XML Leilão ASSURANT carregado! ${audit.approvedCount} aparelhos UNLOCKED aprovados (${audit.discardedLockedCount} LOCKED descartados). ${addAssurantFiveUsd ? `+$${assurantMarkupAmount} USD aplicado!` : ''}`, 'success');
+    } catch (e: any) {
+      showNotice(`Erro ao carregar XML Assurant: ${e?.message}`, 'error');
+    }
+  };
 
   const handleLoadSampleXml = () => {
     try {
@@ -1414,7 +1504,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h)) ||
                             /verizon|usafast/i.test(file.name);
 
-          if (isStockApple || presetFormat === 'STOCK_APPLE') {
+          if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+            setPresetFormat('ASSURANT');
+            const { audit } = processStockAppleRows(rows);
+            showNotice(`Arquivo XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} aparelhos UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
             setPresetFormat('STOCK_APPLE');
             const { audit } = processStockAppleRows(rows);
             showNotice(`Arquivo XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} aparelhos aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
@@ -1457,7 +1551,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h)) ||
                             /verizon/i.test(file.name);
 
-          if (isStockApple || presetFormat === 'STOCK_APPLE') {
+          if (presetFormat === 'ASSURANT' || /assurant/i.test(file.name)) {
+            setPresetFormat('ASSURANT');
+            const { audit } = processStockAppleRows(rows);
+            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
             setPresetFormat('STOCK_APPLE');
             const { audit } = processStockAppleRows(rows);
             showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
@@ -1497,7 +1595,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         // Find header row in first 10 rows
         let headerIdx = 0;
         for (let r = 0; r < Math.min(10, dataGrid.length); r++) {
-          const rowStr = (dataGrid[r] || []).map(c => String(c || '').toLowerCase()).join(' ');
+          const rowStr = (dataGrid[r] || []).map((c: any) => String(c || '').toLowerCase()).join(' ');
           if (rowStr.includes('item') && (rowStr.includes('warehouse') || rowStr.includes('model') || rowStr.includes('category') || rowStr.includes('lock'))) {
             headerIdx = r;
             break;
@@ -1597,7 +1695,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
         const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h));
 
-        if (isStockApple || presetFormat === 'STOCK_APPLE') {
+        if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
+          setPresetFormat('ASSURANT');
+          const { audit } = processStockAppleRows(rows);
+          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
           setPresetFormat('STOCK_APPLE');
           const { audit } = processStockAppleRows(rows);
           showNotice(`XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
@@ -1639,7 +1741,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
       const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h));
 
-      if (isStockApple || presetFormat === 'STOCK_APPLE') {
+      if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
+        setPresetFormat('ASSURANT');
+        const { audit } = processStockAppleRows(rows);
+        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+      } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
         setPresetFormat('STOCK_APPLE');
         const { audit } = processStockAppleRows(rows);
         showNotice(`Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
@@ -1770,7 +1876,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   // Publish Generic Custom Lots
   const handleApplyImport = () => {
-    if (presetFormat === 'STOCK_APPLE' && stockAppleItems.length > 0) {
+    if ((presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT') && stockAppleItems.length > 0) {
       handleApplyStockAppleImport();
       return;
     }
@@ -2024,15 +2130,34 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     ];
   });
 
-  const handleUpdateOfferStatus = (offerId: string, newStatus: AdminOffer['status']) => {
+  const [counterOfferEditingId, setCounterOfferEditingId] = useState<string | null>(null);
+  const [counterOfferUsdInput, setCounterOfferUsdInput] = useState<string>('');
+  const [counterOfferNoteInput, setCounterOfferNoteInput] = useState<string>('');
+
+  const handleUpdateOfferStatus = (
+    offerId: string,
+    newStatus: AdminOffer['status'],
+    counterOfferUsd?: number,
+    adminNote?: string
+  ) => {
     setOffersList(prev => {
-      const updated = prev.map(o => o.id === offerId ? { ...o, status: newStatus } : o);
+      const updated = prev.map(o =>
+        o.id === offerId
+          ? {
+              ...o,
+              status: newStatus,
+              ...(counterOfferUsd !== undefined ? { counterOfferUsd } : {}),
+              ...(adminNote !== undefined ? { adminNote } : {})
+            }
+          : o
+      );
       try {
         localStorage.setItem('us_admin_offers_v1', JSON.stringify(updated));
+        window.dispatchEvent(new Event('offers_updated'));
       } catch (e) {}
       return updated;
     });
-    showNotice(`Status da oferta alterado para "${newStatus}"!`);
+    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel.`);
   };
 
   const handleExportOffersCsv = () => {
@@ -2551,6 +2676,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   <Code className="w-4 h-4 text-amber-400" />
                   <span>⚡ Exemplo XML (Verizon)</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleLoadSampleAssurantXml}
+                  className="px-4 py-2.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/40 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
+                  title="Testar importação com XML modelo da Assurant (apenas UNLOCKED + $5 USD)"
+                >
+                  <Code className="w-4 h-4 text-indigo-400" />
+                  <span>⚡ Exemplo XML (Assurant)</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2561,6 +2695,21 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <div>
                 <span className="text-xs font-bold text-slate-300 block">Formato de Importação:</span>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPresetFormat('ASSURANT')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'ASSURANT'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>★ Leilão ASSURANT (XML / CSV)</span>
+                    <span className="px-1.5 py-0.2 bg-indigo-300 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
+                      UNLOCKED +$5
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setPresetFormat('STOCK_APPLE')}
@@ -2585,7 +2734,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>★ Padrão VERIZON (Grades A(T) DNA...)</span>
+                    <span>★ Padrão VERIZON (DNA, DNB, DNC, DND)</span>
                   </button>
 
                   <button
@@ -2727,10 +2876,31 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           </div>
 
           {/* ======================================================== */}
-          {/* STOCK APPLE UNLOCKED (XML / CSV) AUDIT & PUBLISH CONSOLE */}
+          {/* STOCK APPLE / ASSURANT UNLOCKED (XML / CSV) CONSOLE      */}
           {/* ======================================================== */}
-          {presetFormat === 'STOCK_APPLE' && stockAppleItems.length > 0 && (
-            <div className="space-y-6 p-6 bg-slate-900/90 border border-emerald-500/40 rounded-2xl shadow-2xl">
+          {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT') && stockAppleItems.length > 0 && (
+            <div className={`space-y-6 p-6 bg-slate-900/90 border rounded-2xl shadow-2xl ${presetFormat === 'ASSURANT' ? 'border-indigo-500/40' : 'border-emerald-500/40'}`}>
+              {presetFormat === 'ASSURANT' && (
+                <div className="p-3.5 bg-indigo-950/40 border border-indigo-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-black uppercase">
+                      LEILÃO ASSURANT
+                    </span>
+                    <span className="text-xs text-indigo-200 font-semibold">
+                      Acréscimo automático de +$5 USD por aparelho nos valores importados (apenas UNLOCKED)
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={addAssurantFiveUsd}
+                      onChange={(e) => setAddAssurantFiveUsd(e.target.checked)}
+                      className="w-4 h-4 rounded accent-indigo-500"
+                    />
+                    <span>Acrescentar +${assurantMarkupAmount} USD em todos os valores</span>
+                  </label>
+                </div>
+              )}
               {/* Header & Stats Banner */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
                 <div>
@@ -3637,32 +3807,114 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                        offer.status === 'Vencendo'
+                        offer.status === 'Aceita' || offer.status === 'Vencendo'
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : offer.status === 'Homologada / Arrematada'
+                          : offer.status === 'Contra-Oferta'
+                          ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40'
+                          : offer.status === 'Em Análise' || offer.status === 'Homologada / Arrematada'
                           ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          : offer.status === 'Recusada'
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                           : 'bg-slate-800 text-slate-400 border-slate-700'
                       }`}>
                         {offer.status}
                       </span>
+                      {offer.status === 'Contra-Oferta' && offer.counterOfferUsd && (
+                        <div className="text-[10px] text-indigo-300 font-mono mt-1">
+                          Contra: ${offer.counterOfferUsd.toLocaleString()} USD
+                        </div>
+                      )}
+                      {offer.adminNote && (
+                        <div className="text-[10px] text-slate-400 mt-0.5 max-w-[180px] truncate" title={offer.adminNote}>
+                          Obs: {offer.adminNote}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Homologada / Arrematada')}
+                          onClick={() => handleUpdateOfferStatus(offer.id, 'Aceita')}
                           className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold"
-                          title="Homologar arrematação"
+                          title="Aceitar oferta"
                         >
-                          Homologar
+                          Aceita
                         </button>
                         <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Superada')}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]"
-                          title="Marcar como superada"
+                          onClick={() => handleUpdateOfferStatus(offer.id, 'Em Análise')}
+                          className="px-2 py-1 bg-amber-600/80 hover:bg-amber-500 text-white rounded text-[11px] font-semibold"
+                          title="Colocar em análise"
                         >
-                          Superar
+                          Em Análise
                         </button>
+                        <button
+                          onClick={() => {
+                            setCounterOfferEditingId(counterOfferEditingId === offer.id ? null : offer.id);
+                            setCounterOfferUsdInput(String(offer.counterOfferUsd || Math.round(offer.amountUsd * 1.05)));
+                            setCounterOfferNoteInput(offer.adminNote || '');
+                          }}
+                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold"
+                          title="Enviar contra-oferta"
+                        >
+                          Contra-Oferta
+                        </button>
+                        <button
+                          onClick={() => handleUpdateOfferStatus(offer.id, 'Recusada')}
+                          className="px-2 py-1 bg-rose-600/80 hover:bg-rose-500 text-white rounded text-[11px] font-semibold"
+                          title="Recusar oferta"
+                        >
+                          Recusada
+                        </button>
+                        {(() => {
+                          const phone = (offer.clientWhatsapp || clientsList.find(c => c.email === offer.clientEmail)?.whatsapp || '').replace(/\D/g, '');
+                          if (!phone) return null;
+                          const msg = encodeURIComponent(
+                            `Olá ${offer.clientName}, sua oferta no lote ${offer.lotNumber} ($${offer.amountUsd} USD) está com status: ${offer.status}${offer.counterOfferUsd ? ` (Contra-oferta: $${offer.counterOfferUsd} USD)` : ''}.`
+                          );
+                          return (
+                            <a
+                              href={`https://wa.me/${phone}?text=${msg}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 rounded text-[11px] font-bold"
+                              title="Enviar aviso no WhatsApp do cliente"
+                            >
+                              WhatsApp
+                            </a>
+                          );
+                        })()}
                       </div>
+                      {counterOfferEditingId === offer.id && (
+                        <div className="mt-2 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-lg flex flex-col sm:flex-row items-center justify-end gap-2">
+                          <input
+                            type="number"
+                            value={counterOfferUsdInput}
+                            onChange={(e) => setCounterOfferUsdInput(e.target.value)}
+                            placeholder="Valor USD"
+                            className="w-28 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono"
+                          />
+                          <input
+                            type="text"
+                            value={counterOfferNoteInput}
+                            onChange={(e) => setCounterOfferNoteInput(e.target.value)}
+                            placeholder="Observação opcional..."
+                            className="w-44 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                          />
+                          <button
+                            onClick={() => {
+                              const val = Number(counterOfferUsdInput);
+                              if (!val || val <= 0) {
+                                showNotice('Informe um valor válido em USD para a contra-oferta.', 'error');
+                                return;
+                              }
+                              handleUpdateOfferStatus(offer.id, 'Contra-Oferta', val, counterOfferNoteInput.trim() || undefined);
+                              setCounterOfferEditingId(null);
+                            }}
+                            className="px-2.5 py-1 bg-indigo-500 hover:bg-indigo-400 text-white rounded text-[11px] font-bold"
+                          >
+                            Enviar
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
