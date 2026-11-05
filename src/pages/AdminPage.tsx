@@ -3915,6 +3915,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
                   <th className="py-3 px-3">Data / Hora</th>
                   <th className="py-3 px-3">Lote</th>
+                  <th className="py-3 px-3">Modelo</th>
+                  <th className="py-3 px-3">Qtd</th>
+                  <th className="py-3 px-3">Grade</th>
+                  <th className="py-3 px-3">Cor</th>
+                  <th className="py-3 px-3">Incremento</th>
                   <th className="py-3 px-3">Arrematante / Cliente</th>
                   <th className="py-3 px-3">Valor USD</th>
                   <th className="py-3 px-3">Valor BRL (PTAX)</th>
@@ -3923,12 +3928,31 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {offersList.map(offer => (
+                {offersList.map(offer => {
+                  const lot = auctions.find(a => a.lotNumber === offer.lotNumber || a.id === offer.lotId);
+                  return (
                   <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-3 px-3 text-slate-400">{offer.timestamp}</td>
                     <td className="py-3 px-3">
                       <span className="font-mono font-bold text-amber-400 block">{offer.lotNumber}</span>
-                      <span className="text-[10px] text-slate-400 truncate max-w-[160px] block">{offer.lotTitle}</span>
+                      <span className="text-[10px] text-slate-400 truncate max-w-[140px] block">{offer.lotTitle}</span>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-white">
+                      {lot?.modelFamily || offer.lotTitle}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-slate-200">
+                      {lot?.quantity ? `${lot.quantity} un.` : '-'}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">
+                        {lot?.grade || '-'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-slate-300">
+                      {lot?.colorHighlights?.join(', ') || '-'}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-emerald-400">
+                      +$25 USD
                     </td>
                     <td className="py-3 px-3">
                       <span className="font-semibold text-white block">{offer.clientName}</span>
@@ -4052,7 +4076,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
