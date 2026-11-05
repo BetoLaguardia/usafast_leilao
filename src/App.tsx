@@ -192,17 +192,22 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetch('/api/auctions')
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data.auctions) && data.auctions.length > 0) {
-          setAuctions(data.auctions);
-          try {
-            localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
-          } catch (e) {}
-        }
-      })
-      .catch(() => {});
+    const fetchServerAuctions = () => {
+      fetch('/api/auctions')
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data.auctions) && data.auctions.length > 0) {
+            setAuctions(data.auctions);
+            try {
+              localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
+            } catch (e) {}
+          }
+        })
+        .catch(() => {});
+    };
+    fetchServerAuctions();
+    const timer = setInterval(fetchServerAuctions, 5000);
+    return () => clearInterval(timer);
   }, []);
 
   // Real-time live bidding polling effect (connects to PHP or simulated live pool)

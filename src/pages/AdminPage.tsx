@@ -2184,6 +2184,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [newNotificationEmail, setNewNotificationEmail] = useState<string>('');
   const [testWhatsappPhone, setTestWhatsappPhone] = useState<string>('5511999999999');
   const [testWhatsappStatus, setTestWhatsappStatus] = useState<AdminOffer['status']>('Aceita');
+  const [autoSendWhatsapp, setAutoSendWhatsapp] = useState<boolean>(true);
+  const [whatsappWebhookUrl, setWhatsappWebhookUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem('us_admin_whatsapp_webhook_v1') || '';
+    } catch (e) {
+      return '';
+    }
+  });
 
   const handleAddNotificationEmail = () => {
     const email = newNotificationEmail.trim().toLowerCase();
@@ -2237,7 +2245,36 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       return updated;
     });
     setLastUpdatedOfferId(offerId);
-    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel — clique em "Enviar WhatsApp" para avisar no WhatsApp.`);
+
+    if (autoSendWhatsapp) {
+      const targetOffer = offersList.find(o => o.id === offerId);
+      if (targetOffer) {
+        const clientObj = clientsList.find(c => c.email === targetOffer.clientEmail);
+        const phone = (targetOffer.clientWhatsapp || clientObj?.whatsapp || clientObj?.phone || '5511999999999').replace(/\D/g, '');
+        const textMsg = `Olá ${targetOffer.clientName}, sua oferta no lote ${targetOffer.lotNumber} ($${targetOffer.amountUsd} USD) está com status: *${newStatus}*${counterOfferUsd ? ` (Contra-oferta: $${counterOfferUsd} USD)` : ''}.`;
+
+        if (whatsappWebhookUrl.trim()) {
+          fetch(whatsappWebhookUrl.trim(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone,
+              message: textMsg,
+              status: newStatus,
+              lotNumber: targetOffer.lotNumber,
+              amountUsd: targetOffer.amountUsd,
+              counterOfferUsd
+            })
+          }).catch(() => {});
+          showNotice(`Status alterado para "${newStatus}" e disparado automaticamente via API WhatsApp!`);
+          return;
+        } else {
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(textMsg)}`, '_blank', 'noopener,noreferrer');
+        }
+      }
+    }
+
+    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel e WhatsApp.`);
   };
 
   const handleExportOffersCsv = () => {
@@ -4014,6 +4051,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 >
                   Testar Envio WhatsApp
                 </a>
+              </div>
+              <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoSendWhatsapp}
+                    onChange={e => setAutoSendWhatsapp(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-emerald-500"
+                  />
+                  <span>Disparo automático ao clicar no status</span>
+                </label>
+                <input
+                  type="url"
+                  value={whatsappWebhookUrl}
+                  onChange={e => {
+                    setWhatsappWebhookUrl(e.target.value);
+                    try {
+                      localStorage.setItem('us_admin_whatsapp_webhook_v1', e.target.value);
+                    } catch (err) {}
+                  }}
+                  placeholder="Webhook API (opcional: Evolution/Z-API)"
+                  className="sm:w-56 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white font-mono"
+                />
               </div>
             </div>
           </div>
