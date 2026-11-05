@@ -101,6 +101,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   // Quick bid modal state inside client panel
   const [quickBidLot, setQuickBidLot] = useState<AuctionLot | null>(null);
   const [quickBidAmount, setQuickBidAmount] = useState<number>(0);
+  const [quickBidUnits, setQuickBidUnits] = useState<number>(1);
   const [sniperEnabled, setSniperEnabled] = useState(true);
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
@@ -119,6 +120,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
 
   const handleOpenBidModal = (lot: AuctionLot) => {
     setQuickBidLot(lot);
+    setQuickBidUnits(lot.quantity);
     setQuickBidAmount(lot.currentBidUsd + 25);
   };
 
@@ -128,8 +130,10 @@ export const ClientePage: React.FC<ClientePageProps> = ({
       showSuccess('Informe um valor de lance maior que $0 USD.');
       return;
     }
+    const isVerizon = quickBidLot.sourceType === 'VERIZON' || /verizon/i.test(quickBidLot.auctionHouse);
+    const finalUnits = isVerizon ? quickBidLot.quantity : Math.max(1, Math.min(quickBidLot.quantity, quickBidUnits));
     onPlaceBid(quickBidLot.id, quickBidAmount);
-    showSuccess(`🎉 Oferta de $${quickBidAmount.toLocaleString()} USD computada com sucesso no lote ${quickBidLot.lotNumber}!`);
+    showSuccess(`🎉 Oferta de $${quickBidAmount.toLocaleString()} USD (${finalUnits} un.) computada com sucesso no lote ${quickBidLot.lotNumber}!`);
     setQuickBidLot(null);
   };
 
@@ -1129,6 +1133,60 @@ export const ClientePage: React.FC<ClientePageProps> = ({
               </div>
             </div>
 
+            {/* Seletor de Unidades (exceto Verizon, que exige lote fechado) */}
+            {(() => {
+              const isVerizonLot = quickBidLot.sourceType === 'VERIZON' || /verizon/i.test(quickBidLot.auctionHouse);
+              if (isVerizonLot) {
+                return (
+                  <div className="p-3 bg-red-950/30 border border-red-500/30 rounded-xl text-xs text-red-200 flex items-center justify-between">
+                    <span>Quantidade do Lote (Verizon - Lote Fechado):</span>
+                    <span className="font-mono font-bold text-white">{quickBidLot.quantity} unidade(s)</span>
+                  </div>
+                );
+              }
+              return (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Quantidade de Unidades (Máx: {quickBidLot.quantity}):
+                    </label>
+                    <span className="text-[11px] text-amber-400 font-mono">
+                      1 a {quickBidLot.quantity} un.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuickBidUnits(u => Math.max(1, u - 1))}
+                      disabled={quickBidUnits <= 1}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={quickBidLot.quantity}
+                      value={quickBidUnits}
+                      onChange={e => {
+                        const val = parseInt(e.target.value || '1', 10);
+                        setQuickBidUnits(Math.max(1, Math.min(quickBidLot.quantity, isNaN(val) ? 1 : val)));
+                      }}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-center text-white focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setQuickBidUnits(u => Math.min(quickBidLot.quantity, u + 1))}
+                      disabled={quickBidUnits >= quickBidLot.quantity}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold rounded-lg text-xs"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Seu Lance em Dólar (USD):
@@ -1137,7 +1195,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 <span className="absolute left-3 top-2.5 text-slate-500 font-mono font-bold">$</span>
                 <input
                   type="number"
-                  min={quickBidLot.currentBidUsd + 25}
+                  min={1}
                   step="25"
                   value={quickBidAmount}
                   onChange={e => setQuickBidAmount(Number(e.target.value))}
