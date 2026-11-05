@@ -710,15 +710,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const newLots: AuctionLot[] = verizonGroupedLots.map((g, idx) => {
         const isSamsung = /samsung|galaxy|fold|flip/i.test(g.primaryModel) || /samsung/i.test(g.oem);
         const imageUrl = isSamsung
-          ? '/src/assets/images/samsung_galaxy_lot_1793851025604.jpg'
+          ? '/images/samsung_galaxy_lot_1793851025604.jpg'
           : g.totalQty > 8
-            ? '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
-            : '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+            ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+            : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
 
         const galleryImages = [
           imageUrl,
-          '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-          '/src/assets/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+          '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+          '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
         ];
 
         const primaryStorage = g.uniqueCapacities.length > 0
@@ -842,10 +842,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           estimatedBrazilRetailBrl,
           totalBidsCount: Math.floor(Math.random() * 20) + 1,
           endTime: new Date(Date.now() + 1000 * 60 * 60 * (Math.floor(Math.random() * 8) + 2)).toISOString(),
-          imageUrl: quantity > 1 ? '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg' : '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+          imageUrl: quantity > 1 ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg' : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
           galleryImages: [
-            '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
-            '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+            '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
           ],
           description: `Lote importado via planilha administrativa. Contém ${quantity} aparelho(s) com certificação Clean ESN e laudo de 30 pontos.`,
           diagnosticReport: {

@@ -150,6 +150,9 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
                   src={activeImage}
                   alt={lot.title}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                  }}
                 />
                 <div className="absolute top-3 left-3">
                   <span className={`px-2.5 py-1 rounded text-xs font-bold border backdrop-blur-md ${gradeInfo.badgeColor}`}>
@@ -173,7 +176,14 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
                         activeImage === img ? 'border-amber-400 scale-95' : 'border-slate-800 opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <img src={img} alt="Thumbnail" className="w-full h-full object-cover" />
+                      <img
+                        src={img}
+                        alt="Thumbnail"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                        }}
+                      />
                     </button>
                   ))}
                 </div>

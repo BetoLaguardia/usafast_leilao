@@ -65,6 +65,9 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
           src={lot.imageUrl}
           alt={lot.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+          }}
         />
 
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/30 pointer-events-none" />

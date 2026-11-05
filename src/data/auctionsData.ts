@@ -143,11 +143,11 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 79900,
     totalBidsCount: 28,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 4 + 1000 * 60 * 23).toISOString(),
-    imageUrl: '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+    imageUrl: '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
-      '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-      '/src/assets/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+      '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+      '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
     ],
     description: 'Palete inspecionado contendo 10 unidades originais de iPhone 16 Pro Max 256GB Grade A+ (Impecável). Devolução de operadora corporativa americana (AT&T Business Surplus). Aparelhos com película protetora de fábrica recolocada após verificação.',
     diagnosticReport: {
@@ -197,10 +197,10 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 26500,
     totalBidsCount: 19,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 1 + 1000 * 60 * 42).toISOString(),
-    imageUrl: '/src/assets/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+    imageUrl: '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
-      '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+      '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
     ],
     description: 'Cinco unidades de iPhone 15 Pro com carcaça em titânio e chip A17 Pro. Grade A rigorosa: micro-riscos imperceptíveis, bateria média de 91%, telas originais Apple com True Tone 100% ativo.',
     diagnosticReport: {
@@ -244,9 +244,9 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 9200,
     totalBidsCount: 34,
     endTime: new Date(Date.now() + 1000 * 60 * 38).toISOString(), // ending in 38 mins
-    imageUrl: '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+    imageUrl: '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg'
+      '/images/iphone_16_pro_max_grade_a_1793849011033.jpg'
     ],
     description: 'Unidade individual de alta capacidade (512GB). 100% de saúde de bateria, com apenas 4 ciclos registrados no relatório de diagnóstico Apple. Acompanha caixa original aberta com cabo USB-C trançado lacrado.',
     diagnosticReport: {
@@ -286,10 +286,10 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 106250,
     totalBidsCount: 41,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 7 + 1000 * 60 * 15).toISOString(),
-    imageUrl: '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+    imageUrl: '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-      '/src/assets/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+      '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
     ],
     description: 'Palete voltado para revendedores de grande volume. 25 unidades de iPhone 15 128GB com Dynamic Island. Aparelhos 100% funcionais, sem trincos na tela. Grade B com pequenos sinais estéticos que somem com capinha e película.',
     diagnosticReport: {
@@ -339,10 +339,10 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 54400,
     totalBidsCount: 22,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 2 + 1000 * 60 * 50).toISOString(),
-    imageUrl: '/src/assets/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+    imageUrl: '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
-      '/src/assets/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+      '/images/iphone_15_pro_natural_titanium_1793849011192.jpg',
+      '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
     ],
     description: 'Oito unidades recondicionadas oficiais Apple com carcaça e tela substitutas originais, selo de fábrica e 100% de saúde de bateria. Acompanha certificado de teste com 0 ciclos de uso.',
     diagnosticReport: {
@@ -391,9 +391,9 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 58500,
     totalBidsCount: 29,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 5 + 1000 * 60 * 10).toISOString(),
-    imageUrl: '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+    imageUrl: '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
     ],
     description: 'Surplus governamental americano proveniente de renovação de contratos federais. Todos os aparelhos foram higienizados e resetados com FMI OFF e laudo de IMEI limpo pela GSMA.',
     diagnosticReport: {
@@ -442,9 +442,9 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 23700,
     totalBidsCount: 16,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 3 + 1000 * 60 * 5).toISOString(),
-    imageUrl: '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
+    imageUrl: '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_16_pro_max_grade_a_1793849011033.jpg'
+      '/images/iphone_16_pro_max_grade_a_1793849011033.jpg'
     ],
     description: 'Três unidades de iPhone 16 Pro 256GB com acabamento em Titânio Natural e Botão de Controle de Câmera capacitivo. Condição A+ sem qualquer detalhe, baterias com 100% e 1 a 3 ciclos.',
     diagnosticReport: {
@@ -485,9 +485,9 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
     estimatedBrazilRetailBrl: 51600,
     totalBidsCount: 25,
     endTime: new Date(Date.now() + 1000 * 60 * 60 * 6 + 1000 * 60 * 40).toISOString(),
-    imageUrl: '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+    imageUrl: '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
     galleryImages: [
-      '/src/assets/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+      '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
     ],
     description: 'Doze unidades de iPhone 14 Pro Max com tela intacta sem trincos, mas com marcas e arranhões visíveis na carcaça de aço cirúrgico. Excelente margem de lucro para assistência técnica que faz revitalização ou revenda econômica.',
     diagnosticReport: {

@@ -473,7 +473,14 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                               className="w-14 h-14 rounded-xl bg-slate-950 overflow-hidden border border-slate-800 cursor-pointer relative group shrink-0"
                               title="Clique para ver fotos e laudo do lote"
                             >
-                              <img src={lot.imageUrl} alt={lot.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                              <img 
+                                src={lot.imageUrl} 
+                                alt={lot.title} 
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" 
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                                }}
+                              />
                               <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent" />
                             </div>
                           </td>
@@ -622,6 +629,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                         src={lot.imageUrl}
                         alt={lot.title}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                        }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-black/30 pointer-events-none" />
 
