@@ -828,10 +828,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const warehouse = normalizeField(row, 'Warehouse', 'warehouse', 'Armazem') || 'W23-ATT';
       const category = normalizeField(row, 'Category', 'category', 'Categoria') || '';
       const make = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM') || 'Apple';
-      const model = normalizeField(row, 'Model', 'model', 'Modelo') || '';
+      const description = normalizeField(row, 'Description', 'description', 'Descricao') || '';
+      const model = normalizeField(row, 'Model', 'model', 'Modelo', 'ModelName', 'model_name', 'DeviceModel', 'device_model', 'Product', 'product', 'ItemName', 'item_name') || (description ? description.split(/\s+/).slice(0, 4).join(' ') : 'iPhone');
       const modelNumber = normalizeField(row, 'Model Number', 'ModelNumber', 'model_number', 'PartNumber', 'part_number') || '';
       const capacity = normalizeField(row, 'Capacity', 'capacity', 'Capacidade', 'Storage', 'storage') || '128GB';
-      const description = normalizeField(row, 'Description', 'description', 'Descricao') || '';
       const carrier = normalizeField(row, 'Carrier', 'carrier', 'Operadora') || '';
       const lockStatus = normalizeField(row, 'Lock Status', 'LockStatus', 'lock_status', 'lock-status', 'StatusBloqueio') || '';
       const color = normalizeField(row, 'Color', 'color', 'Cor') || 'Space Gray';
@@ -2824,7 +2824,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>★ Leilão ASSURANT (XML / CSV)</span>
+                    <span>★ Leilão ASSURANT (XLSX / XML / CSV)</span>
                     <span className="px-1.5 py-0.2 bg-indigo-300 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
                       UNLOCKED +$5
                     </span>
@@ -3837,13 +3837,58 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento</h2>
               <p className="text-xs text-slate-400">Edite lances atuais, altere grades ou remova lotes encerrados</p>
             </div>
-            <button
-              onClick={() => setAdminTab('upload')}
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Importar Mais Lotes (Excel)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(auctions)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'catalogo_leiloes_usafast.json';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  showNotice('Catálogo exportado! Abra esse arquivo no celular em "Importar Catálogo (.json)".', 'success');
+                }}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar Catálogo (.json)</span>
+              </button>
+              <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Importar Catálogo (.json)</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const r = new FileReader();
+                    r.onload = (ev) => {
+                      try {
+                        const parsed = JSON.parse(String(ev.target?.result || '[]'));
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                          onUpdateAuctions(parsed);
+                          showNotice(`🎉 ${parsed.length} lotes sincronizados com sucesso!`, 'success');
+                        }
+                      } catch (err) {
+                        showNotice('Arquivo JSON inválido.', 'error');
+                      }
+                    };
+                    r.readAsText(f);
+                  }}
+                />
+              </label>
+              <button
+                onClick={() => setAdminTab('upload')}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Importar Mais Lotes (Excel)</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
