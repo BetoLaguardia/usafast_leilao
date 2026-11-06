@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Gavel, UserPlus, ShieldCheck, DollarSign, Layers, Users, Lock, Menu, X, UserCheck } from 'lucide-react';
+import { Gavel, UserPlus, ShieldCheck, DollarSign, Layers, Users, Lock, Menu, X, UserCheck, Globe } from 'lucide-react';
+import { Language, TRANSLATIONS } from '../utils/i18n';
 
 export type AppPage = 'home' | 'leiloes' | 'gradeamento' | 'quem-somos' | 'cliente' | 'admin';
 
@@ -15,6 +16,12 @@ interface HeaderProps {
   onClientLogout?: () => void;
   onAdminLogout?: () => void;
   clientName?: string;
+  language: Language;
+  onSelectLanguage: (lang: Language) => void;
+  isPtaxOnline?: boolean;
+  ptaxSource?: string;
+  ptaxLastUpdated?: string;
+  onRefreshPtax?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,9 +35,17 @@ export const Header: React.FC<HeaderProps> = ({
   isAdminAuthenticated,
   onClientLogout,
   onAdminLogout,
-  clientName
+  clientName,
+  language,
+  onSelectLanguage,
+  isPtaxOnline = true,
+  ptaxSource = 'Banco Central do Brasil (PTAX)',
+  ptaxLastUpdated,
+  onRefreshPtax
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const t = TRANSLATIONS[language];
 
   const handleNavClick = (page: AppPage) => {
     if (page === 'leiloes' && !isClientAuthenticated && !isAdminAuthenticated) {
@@ -59,9 +74,17 @@ export const Header: React.FC<HeaderProps> = ({
               Portal do Importador Brasil · Leilões Oficiais Assurant, Marketplaces USA, Macbooks & Verizon
             </span>
             <span className="text-slate-600 hidden lg:inline">|</span>
-            <span className="text-slate-400 hidden lg:inline font-mono">
-              PTAX: 1 USD = R$ {usdRate.toFixed(2)}
-            </span>
+            <div 
+              onClick={onRefreshPtax}
+              className="inline-flex items-center gap-1.5 font-mono text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 rounded-full text-[11px] cursor-pointer hover:bg-emerald-900/60 transition-colors shadow-sm"
+              title={`${ptaxSource} ${ptaxLastUpdated ? `· Atualizado às ${ptaxLastUpdated}` : ''} (Clique para atualizar)`}
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>Dólar Online (PTAX): 1 USD = R$ {usdRate.toFixed(2)}</span>
+            </div>
           </div>
 
           {/* TWO PROMINENT LINKS TO "NOSSO SISTEMA DE LEILÕES" */}
@@ -140,7 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'hover:text-white hover:bg-slate-900'
             }`}
           >
-            Início
+            {t.home}
           </button>
 
           <button
@@ -151,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'hover:text-white hover:bg-slate-900'
             }`}
           >
-            <span>Leilões</span>
+            <span>{t.auctions}</span>
             {!isClientAuthenticated && !isAdminAuthenticated && (
               <Lock className="w-3 h-3 text-amber-400 opacity-80" />
             )}
@@ -166,7 +189,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-amber-400" />
-            <span>Gradeamento</span>
+            <span>{t.grading}</span>
           </button>
 
           <button
@@ -178,7 +201,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Users className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Quem Somos</span>
+            <span>{t.aboutUs}</span>
           </button>
 
           {/* Dedicated Portal do Cliente / Arrematante tab */}
@@ -191,7 +214,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <UserCheck className="w-3.5 h-3.5" />
-            <span>Painel do Cliente</span>
+            <span>{t.clientPanel}</span>
           </button>
 
           {/* Admin panel */}
@@ -204,12 +227,60 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Lock className="w-3 h-3" />
-            <span>Painel Admin (Excel)</span>
+            <span>{t.adminPanel}</span>
           </button>
         </nav>
 
-        {/* Zone 3: Currency Switch & Quick Bids Action */}
+        {/* Zone 3: Language Selector, Currency Switch & Quick Bids Action */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Language Selector Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setLangMenuOpen(!langMenuOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-100 border border-slate-700 rounded-md text-xs font-semibold transition-colors"
+              title="Selecionar Idioma / Select Language / Seleccionar Idioma"
+            >
+              <Globe className="w-3.5 h-3.5 text-amber-400" />
+              <span>{language === 'pt' ? '🇧🇷 PT' : language === 'es' ? '🇪🇸 ES' : '🇺🇸 EN'}</span>
+            </button>
+
+            {langMenuOpen && (
+              <div className="absolute right-0 mt-1 w-36 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectLanguage('pt');
+                    setLangMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-slate-800 ${language === 'pt' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-200'}`}
+                >
+                  <span>🇧🇷</span> Português
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectLanguage('es');
+                    setLangMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-slate-800 ${language === 'es' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-200'}`}
+                >
+                  <span>🇪🇸</span> Español
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectLanguage('en');
+                    setLangMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-slate-800 ${language === 'en' ? 'text-amber-400 font-bold bg-slate-800/50' : 'text-slate-200'}`}
+                >
+                  <span>🇺🇸</span> English
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={onToggleCurrency}
             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-md text-xs font-mono transition-colors"
@@ -224,7 +295,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap shadow-sm shadow-amber-500/10"
           >
             <Gavel className="w-4 h-4" />
-            <span>Dar Lances</span>
+            <span>{t.placeBids}</span>
           </button>
 
           {/* Mobile hamburger menu toggle */}
@@ -256,7 +327,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => handleNavClick('gradeamento')}
             className={`w-full text-left px-3 py-2 rounded-lg font-semibold ${currentPage === 'gradeamento' ? 'bg-slate-800 text-amber-400' : 'text-slate-300'}`}
           >
-            Gradeamento (A+, A, B, C, CPO)
+            Gradeamento (A+, A, B, C, DNA...)
           </button>
           <button
             onClick={() => handleNavClick('quem-somos')}

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { AuctionLot, GradeType, SystemUser } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
+import { downloadOfficialInvoicePdf } from '../utils/generatePdfInvoice';
 
 interface ClientePageProps {
   currentUser: SystemUser;
@@ -375,9 +376,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 </select>
               </div>
 
-              {/* Filter 2: Grade (Dinâmico conforme importado) */}
+              {/* Filter 2: Grade */}
               <div>
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Grade Estético:</label>
+                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Grade:</label>
                 <select
                   value={selectedGradeFilter}
                   onChange={e => setSelectedGradeFilter(e.target.value)}
@@ -418,35 +419,6 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   <option value="256GB">256GB</option>
                   <option value="512GB">512GB</option>
                   <option value="1TB">1TB</option>
-                </select>
-              </div>
-
-              {/* Filter 4: Auction House */}
-              <div>
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Casa de Leilão / Origem:</label>
-                <select
-                  value={selectedAuctionHouseFilter}
-                  onChange={e => setSelectedAuctionHouseFilter(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
-                >
-                  <option value="all">Todas as Casas</option>
-                  {availableAuctionHouses.map(h => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Filter 5: Lot Type */}
-              <div className="col-span-2 sm:col-span-1">
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Tipo de Lote:</label>
-                <select
-                  value={selectedLotTypeFilter}
-                  onChange={e => setSelectedLotTypeFilter(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
-                >
-                  <option value="all">Todos os Tipos</option>
-                  <option value="wholesale">Atacado (Paletes & Lotes &gt; 1 un)</option>
-                  <option value="single">Avulso (1 Unidade)</option>
                 </select>
               </div>
             </div>
@@ -1005,7 +977,112 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300">
                   {userBids.map((b, idx) => {
-                    const lot = auctions.find(a => a.id === b.lotId);
+                    const lot = auctions.find(a => a.id === b.lotId || a.lotNumber === b.lotId);
+                    const offer = adminOffers.find(o => 
+                      (o.lotId === b.lotId || o.lotNumber === b.lotId || (lot && o.lotId === lot.id)) &&
+                      (o.clientEmail === currentUser.email || o.clientName === currentUser.name)
+                    );
+
+                    // Dynamic Dispute Status Logic
+                    const isExpired = lot ? new Date(lot.endTime).getTime() <= Date.now() : false;
+                    const isOutbid = lot ? lot.currentBidUsd > b.amountUsd : false;
+
+                    let statusBadge = {
+                      text: '● Maior Lance (Você está ganhando)',
+                      style: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+                      isWinning: true,
+                      isEnded: false,
+                      hasCounterOffer: false,
+                      counterPrice: 0
+                    };
+
+                    if (offer) {
+                      if (offer.status === 'Aceita') {
+                        statusBadge = {
+                          text: '● Oferta Aceita (Arrematado)',
+                          style: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/10',
+                          isWinning: true,
+                          isEnded: true,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      } else if (offer.status === 'Homologada / Arrematada') {
+                        statusBadge = {
+                          text: '● Arrematado & Homologado',
+                          style: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/10',
+                          isWinning: true,
+                          isEnded: true,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      } else if (offer.status === 'Contra-Oferta') {
+                        statusBadge = {
+                          text: `● Contra-Oferta ($${(offer.counterOfferUsd || b.amountUsd).toLocaleString()} USD)`,
+                          style: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-sm shadow-indigo-500/10',
+                          isWinning: false,
+                          isEnded: false,
+                          hasCounterOffer: true,
+                          counterPrice: offer.counterOfferUsd || b.amountUsd
+                        };
+                      } else if (offer.status === 'Em Análise') {
+                        statusBadge = {
+                          text: '● Em Análise pela Diretoria',
+                          style: 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/10',
+                          isWinning: true,
+                          isEnded: false,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      } else if (offer.status === 'Recusada') {
+                        statusBadge = {
+                          text: '○ Oferta Recusada',
+                          style: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                          isWinning: false,
+                          isEnded: true,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      } else if (offer.status === 'Superada') {
+                        statusBadge = {
+                          text: '○ Lance Superado por Outro Licitante',
+                          style: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                          isWinning: false,
+                          isEnded: false,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      }
+                    } else if (isExpired) {
+                      if (isOutbid) {
+                        statusBadge = {
+                          text: '○ Encerrado (Lance Superado)',
+                          style: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+                          isWinning: false,
+                          isEnded: true,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      } else {
+                        statusBadge = {
+                          text: '● Leilão Encerrado (Arrematado)',
+                          style: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/10',
+                          isWinning: true,
+                          isEnded: true,
+                          hasCounterOffer: false,
+                          counterPrice: 0
+                        };
+                      }
+                    } else if (isOutbid) {
+                      statusBadge = {
+                        text: `○ Lance Superado ($${lot?.currentBidUsd.toLocaleString()} USD)`,
+                        style: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+                        isWinning: false,
+                        isEnded: false,
+                        hasCounterOffer: false,
+                        counterPrice: 0
+                      };
+                    }
+
                     return (
                       <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3 px-4">
@@ -1020,22 +1097,53 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                         </td>
                         <td className="py-3 px-4 text-slate-400">{b.timestamp}</td>
                         <td className="py-3 px-4">
-                          <span className={`px-2.5 py-0.5 rounded text-[11px] font-bold border ${
-                            b.status === 'vencendo'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                          }`}>
-                            {b.status === 'vencendo' ? '● Maior Lance (Você está ganhando)' : '○ Lance Superado'}
+                          <span className={`px-2.5 py-1 rounded text-[11px] font-bold border inline-block ${statusBadge.style}`}>
+                            {statusBadge.text}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          {lot && (
+                          {statusBadge.hasCounterOffer ? (
                             <button
-                              onClick={() => handleOpenBidModal(lot)}
-                              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-colors"
+                              onClick={() => {
+                                if (offer) {
+                                  const updated = adminOffers.map(o =>
+                                    o.id === offer.id ? { ...o, status: 'Aceita' as const, amountUsd: statusBadge.counterPrice } : o
+                                  );
+                                  setAdminOffers(updated);
+                                  try {
+                                    localStorage.setItem('us_admin_offers_v1', JSON.stringify(updated));
+                                    window.dispatchEvent(new Event('offers_updated'));
+                                  } catch (e) {}
+                                  showSuccess(`Contra-oferta de $${statusBadge.counterPrice.toLocaleString()} USD aceita!`);
+                                }
+                              }}
+                              className="px-3 py-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-lg text-xs transition-colors shadow-sm"
                             >
-                              Cobrir Lance
+                              Aceitar (${statusBadge.counterPrice.toLocaleString()})
                             </button>
+                          ) : statusBadge.isWinning ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              {lot && !statusBadge.isEnded && (
+                                <button
+                                  onClick={() => handleOpenBidModal(lot)}
+                                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg text-[11px] transition-colors"
+                                >
+                                  Aumentar
+                                </button>
+                              )}
+                              <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-[11px] font-bold border border-emerald-500/30">
+                                {statusBadge.isEnded ? 'Arrematado' : 'Vencendo'}
+                              </span>
+                            </div>
+                          ) : (
+                            lot && (
+                              <button
+                                onClick={() => handleOpenBidModal(lot)}
+                                className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs transition-colors shadow-sm"
+                              >
+                                Cobrir Lance
+                              </button>
+                            )
                           )}
                         </td>
                       </tr>
@@ -1057,27 +1165,79 @@ export const ClientePage: React.FC<ClientePageProps> = ({
             <div>
               <h2 className="text-lg font-bold text-white">Lotes Homologados e Arrematados</h2>
               <p className="text-xs text-slate-400">
-                Aparelhos prontos para conferência física no galpão de Miami e expedição para o Brasil
+                Aparelhos em processamento e conferência física no galpão de Miami Doral para expedição
               </p>
             </div>
           </div>
 
           <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-950 rounded-xl border border-emerald-500/30">
+            {/* Standard Primary Invoice Item */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-950 rounded-xl border border-emerald-500/30 shadow-md">
               <div className="space-y-1">
                 <span className="font-bold text-white text-sm block">Lote US-88201-MIA · 10x iPhone 15 Pro 128GB Grade A</span>
                 <span className="text-xs text-slate-400">
-                  Arrematado em 02/11/2026 por <strong>$5.400 USD</strong> · Conferido e Embalado no Galpão Miami Doral
+                  Arrematado em 02/11/2026 por <strong>$5.400 USD</strong> · <span className="text-amber-400 font-semibold">Aguardando Conferência e Embalo nosso Galpão em Doral</span>
                 </span>
               </div>
               <button
-                onClick={() => showSuccess('Download da Invoice e Ordem de Despacho iniciado!')}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shrink-0"
+                type="button"
+                onClick={() => {
+                  downloadOfficialInvoicePdf({
+                    invoiceNumber: 'INV-2026-US88201',
+                    date: '02/11/2026',
+                    lotNumber: 'US-88201-MIA',
+                    lotTitle: 'Lote Master 10x iPhone 15 Pro 128GB Grade A',
+                    quantity: 10,
+                    grade: 'Grade A',
+                    totalUsd: 5400,
+                    usdRate: usdRate,
+                    user: currentUser,
+                    warehouseStatus: 'Aguardando Conferência e Embalo nosso Galpão em Doral'
+                  });
+                  showSuccess('Invoice Oficial PDF gerada e pronta para impressão/download!');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shrink-0 shadow-md shadow-emerald-600/20 active:scale-95"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Baixar Invoice Oficial (PDF)</span>
               </button>
             </div>
+
+            {/* Dynamic Accepted / Won Lots from adminOffers */}
+            {adminOffers
+              .filter(o => (o.clientEmail === currentUser.email || o.clientName === currentUser.name) && (o.status === 'Aceita' || o.status === 'Homologada / Arrematada'))
+              .map(offer => (
+                <div key={offer.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-950 rounded-xl border border-emerald-500/30">
+                  <div className="space-y-1">
+                    <span className="font-bold text-white text-sm block">Lote {offer.lotNumber} · {offer.lotTitle}</span>
+                    <span className="text-xs text-slate-400">
+                      Homologado por <strong>${offer.amountUsd.toLocaleString()} USD</strong> · <span className="text-amber-400 font-semibold">Aguardando Conferência e Embalo nosso Galpão em Doral</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      downloadOfficialInvoicePdf({
+                        invoiceNumber: `INV-${offer.lotNumber.replace(/[^A-Z0-9]/gi, '')}`,
+                        date: offer.timestamp || 'Hoje',
+                        lotNumber: offer.lotNumber,
+                        lotTitle: offer.lotTitle,
+                        quantity: 1,
+                        grade: 'Grade A',
+                        totalUsd: offer.amountUsd,
+                        usdRate: usdRate,
+                        user: currentUser,
+                        warehouseStatus: 'Aguardando Conferência e Embalo nosso Galpão em Doral'
+                      });
+                      showSuccess(`Invoice Oficial PDF do lote ${offer.lotNumber} gerada!`);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shrink-0 shadow-md active:scale-95"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Baixar Invoice Oficial (PDF)</span>
+                  </button>
+                </div>
+              ))}
           </div>
         </div>
       )}

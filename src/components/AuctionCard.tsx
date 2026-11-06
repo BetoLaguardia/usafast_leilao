@@ -12,7 +12,7 @@ interface AuctionCardProps {
   usdRate: number;
 }
 
-export const AuctionCard: React.FC<AuctionCardProps> = ({
+const AuctionCardComponent: React.FC<AuctionCardProps> = ({
   lot,
   onSelectLot,
   onQuickBid,
@@ -45,7 +45,10 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
     return () => clearInterval(interval);
   }, [lot.endTime]);
 
-  const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || GRADE_EXPLANATIONS['Grade A'];
+  const cleanGrade = (lot.grade || '').replace(/\(T\)/gi, '').trim() || 'Grade A';
+  const cleanTitle = (lot.title || '').replace(/\(T\)/gi, '').trim();
+
+  const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || GRADE_EXPLANATIONS[cleanGrade] || GRADE_EXPLANATIONS['Grade A'];
 
   const formattedCurrentPrice = currency === 'USD'
     ? `$ ${lot.currentBidUsd.toLocaleString()} USD`
@@ -76,11 +79,16 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
           <div className="flex items-center gap-1.5">
             <span className={`px-2.5 py-1 rounded text-xs font-bold border backdrop-blur-md shadow-sm ${gradeInfo.badgeColor}`}>
-              {lot.grade}
+              {cleanGrade}
             </span>
             {(lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse) || /verizon/i.test(lot.carrierStatus)) && (
               <span className="px-2 py-0.5 rounded bg-red-600 text-white font-black text-[10px] tracking-wider uppercase shadow-md">
                 VERIZON
+              </span>
+            )}
+            {(lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse)) && (
+              <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] tracking-wider uppercase shadow-md">
+                ASSURANT
               </span>
             )}
           </div>
@@ -125,7 +133,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
             onClick={() => onSelectLot(lot)}
             className="text-base font-bold text-white group-hover:text-amber-300 transition-colors line-clamp-2 cursor-pointer leading-snug"
           >
-            {lot.title}
+            {cleanTitle}
           </h3>
 
           {/* Key Specs Breakdown */}
@@ -196,3 +204,6 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
     </div>
   );
 };
+
+export const AuctionCard = React.memo(AuctionCardComponent);
+

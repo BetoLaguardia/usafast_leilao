@@ -14,6 +14,8 @@ import { AdminLoginGate, ClientLoginGate } from './components/AuthGates';
 import { INITIAL_AUCTIONS, DEFAULT_PTAX_USD_BRL, GRADE_EXPLANATIONS } from './data/auctionsData';
 import { AuctionLot, GradeType, SystemUser, AdminOffer } from './types/auction';
 import { apiService } from './services/apiService';
+import { Language, TRANSLATIONS } from './utils/i18n';
+import { fetchLivePtaxRate } from './utils/ptaxService';
 import { 
   Search, 
   Filter, 
@@ -61,6 +63,23 @@ export default function App() {
   });
 
   const [currency, setCurrency] = useState<'USD' | 'BRL'>('USD');
+  const [language, setLanguage] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem('us_iphone_lang');
+      if (saved === 'pt' || saved === 'es' || saved === 'en') return saved;
+    } catch (e) {}
+    return 'pt';
+  });
+
+  const handleSelectLanguage = (lang: Language) => {
+    setLanguage(lang);
+    try {
+      localStorage.setItem('us_iphone_lang', lang);
+    } catch (e) {}
+  };
+
+  const t = TRANSLATIONS[language];
+
   const [usdRate, setUsdRate] = useState<number>(() => {
     try {
       const savedRate = localStorage.getItem('us_ptax_rate');
@@ -68,6 +87,35 @@ export default function App() {
     } catch (e) {}
     return DEFAULT_PTAX_USD_BRL;
   });
+
+  const [ptaxInfo, setPtaxInfo] = useState<{ isOnline: boolean; source: string; lastUpdated: string }>({
+    isOnline: true,
+    source: 'Banco Central do Brasil (PTAX)',
+    lastUpdated: ''
+  });
+
+  const loadLivePtax = async () => {
+    try {
+      const res = await fetchLivePtaxRate();
+      if (res && res.rate) {
+        setUsdRate(res.rate);
+        try {
+          localStorage.setItem('us_ptax_rate', String(res.rate));
+        } catch (e) {}
+        setPtaxInfo({
+          isOnline: res.isOnline,
+          source: res.source,
+          lastUpdated: res.lastUpdated
+        });
+      }
+    } catch (err) {
+      console.error('Error loading live PTAX:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadLivePtax();
+  }, []);
 
   const handleUpdateUsdRate = (rate: number) => {
     setUsdRate(rate);
@@ -169,6 +217,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterModel, setFilterModel] = useState<string>('all');
   const [filterGrade, setFilterGrade] = useState<string>('all');
+  const [filterCapacity, setFilterCapacity] = useState<string>('all');
   const [filterLotType, setFilterLotType] = useState<string>('all');
   const [filterAuctionHouse, setFilterAuctionHouse] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'endingSoon' | 'priceAsc' | 'priceDesc' | 'profitDesc' | 'mostBids'>('endingSoon');
@@ -357,6 +406,22 @@ export default function App() {
   // Filtered & Sorted Auctions
   const filteredAuctions = useMemo(() => {
     return auctions.filter(lot => {
+      // 1. Sanitize or exclude items containing (T)
+      const cleanGrade = (lot.grade || '').replace(/\(T\)/gi, '').trim();
+      if (lot.grade.includes('(T)') && !['DNA', 'DNB', 'DNC', 'DND', 'Grade A+', 'Grade A', 'Grade B', 'Grade C'].includes(cleanGrade)) {
+        return false;
+      }
+
+      // 2. Verizon strict rule: When Verizon, ONLY show DNA, DNB, DNC, DND
+      const isVerizon = lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse) || /verizon/i.test(lot.carrierStatus);
+      if (isVerizon) {
+        const allowedVerizonGrades = ['DNA', 'DNB', 'DNC', 'DND'];
+        if (!allowedVerizonGrades.includes(cleanGrade)) {
+          return false;
+        }
+      }
+
+      // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchesTitle = lot.title.toLowerCase().includes(query);
@@ -365,28 +430,40 @@ export default function App() {
         const matchesLoc = lot.location.toLowerCase().includes(query);
         const matchesStorage = lot.primaryStorage.toLowerCase().includes(query);
         const matchesOem = (lot.oemBrand || '').toLowerCase().includes(query);
+        const matchesHouse = (lot.auctionHouse || '').toLowerCase().includes(query);
         const matchesSource = (lot.sourceType || '').toLowerCase().includes(query);
-        if (!matchesTitle && !matchesLotNum && !matchesModel && !matchesLoc && !matchesStorage && !matchesOem && !matchesSource) {
+        if (!matchesTitle && !matchesLotNum && !matchesModel && !matchesLoc && !matchesStorage && !matchesOem && !matchesHouse && !matchesSource) {
           return false;
         }
       }
 
+      // Filter by Model
       if (filterModel !== 'all' && lot.modelFamily !== filterModel) {
         return false;
       }
 
-      if (filterGrade !== 'all' && lot.grade !== filterGrade) {
+      // Filter by Grade
+      if (filterGrade !== 'all' && cleanGrade !== filterGrade && lot.grade !== filterGrade) {
         return false;
       }
 
-      if (filterLotType === 'single' && lot.quantity !== 1) return false;
-      if (filterLotType === 'small' && (lot.quantity < 2 || lot.quantity > 8)) return false;
-      if (filterLotType === 'wholesale' && lot.quantity < 10) return false;
+      // Filter by Capacity
+      if (filterCapacity !== 'all') {
+        if (!lot.primaryStorage.toUpperCase().includes(filterCapacity.toUpperCase())) {
+          return false;
+        }
+      }
 
+      // Filter by Auction House / Source
       if (filterAuctionHouse === 'VERIZON') {
-        if (lot.sourceType !== 'VERIZON' && !/verizon/i.test(lot.auctionHouse) && !/verizon/i.test(lot.carrierStatus)) return false;
-      } else if (filterAuctionHouse !== 'all' && lot.auctionHouse !== filterAuctionHouse) {
-        return false;
+        if (!isVerizon) return false;
+      } else if (filterAuctionHouse === 'ASSURANT') {
+        const isAssurant = lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse);
+        if (!isAssurant) return false;
+      } else if (filterAuctionHouse !== 'all') {
+        if (lot.auctionHouse !== filterAuctionHouse && lot.sourceType !== filterAuctionHouse) {
+          return false;
+        }
       }
 
       return true;
@@ -410,7 +487,22 @@ export default function App() {
       }
       return 0;
     });
-  }, [auctions, searchQuery, filterModel, filterGrade, filterLotType, filterAuctionHouse, sortBy, usdRate]);
+  }, [auctions, searchQuery, filterModel, filterGrade, filterCapacity, filterAuctionHouse, sortBy, usdRate]);
+
+  // Pagination State for Instant Loading & Smooth UI
+  const [auctionsPage, setAuctionsPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 12;
+
+  // Reset page when filters change
+  useEffect(() => {
+    setAuctionsPage(1);
+  }, [searchQuery, filterModel, filterGrade, filterCapacity, filterAuctionHouse, sortBy]);
+
+  const totalAuctionsPages = Math.ceil(filteredAuctions.length / ITEMS_PER_PAGE) || 1;
+  const paginatedAuctions = useMemo(() => {
+    const startIndex = (auctionsPage - 1) * ITEMS_PER_PAGE;
+    return filteredAuctions.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAuctions, auctionsPage]);
 
   return (
     <div className="min-h-screen bg-[#0b0f17] text-slate-100 flex flex-col font-sans">
@@ -430,11 +522,17 @@ export default function App() {
         currency={currency}
         onToggleCurrency={() => setCurrency(prev => prev === 'USD' ? 'BRL' : 'USD')}
         usdRate={usdRate}
+        isPtaxOnline={ptaxInfo.isOnline}
+        ptaxSource={ptaxInfo.source}
+        ptaxLastUpdated={ptaxInfo.lastUpdated}
+        onRefreshPtax={loadLivePtax}
         isClientAuthenticated={isClientAuthenticated}
         isAdminAuthenticated={isAdminAuthenticated}
         onClientLogout={handleClientLogout}
         onAdminLogout={handleAdminLogout}
         clientName={currentUser.name}
+        language={language}
+        onSelectLanguage={handleSelectLanguage}
       />
 
       <main className="flex-1">
@@ -641,7 +739,7 @@ export default function App() {
                   Lotes de iPhones Disponíveis para Arrematação
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-xl">
-                  Filtragem avançada por modelo, grade estético, quantidade por palete e casa de leilão americana.
+                  Filtragem por modelo, grade, capacidade e leilões americanos.
                 </p>
               </div>
 
@@ -674,7 +772,7 @@ export default function App() {
                     type="text"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Buscar por modelo (16 Pro Max, 15 Pro), lote (US-89104), cor ou cidade dos EUA..."
+                    placeholder={t.searchPlaceholder}
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
                   />
                   {searchQuery && (
@@ -688,107 +786,139 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-slate-400 hidden sm:inline">Ordenar:</span>
+                  <span className="text-xs text-slate-400 hidden sm:inline">{t.sortLabel}</span>
                   <select
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value as any)}
-                    className="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                    className="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400 font-medium"
                   >
-                    <option value="endingSoon">Terminando Logo (Tempo)</option>
-                    <option value="profitDesc">Maior Lucro Estimado no Brasil</option>
-                    <option value="priceAsc">Menor Lance Atual</option>
-                    <option value="priceDesc">Maior Lance Atual</option>
-                    <option value="mostBids">Mais Disputados (Lances)</option>
+                    <option value="endingSoon">{t.endingSoon}</option>
+                    <option value="profitDesc">{t.highestProfit}</option>
+                    <option value="priceAsc">{t.lowestPrice}</option>
+                    <option value="priceDesc">{t.highestPrice}</option>
+                    <option value="mostBids">{t.mostBids}</option>
                   </select>
                 </div>
               </div>
 
-              {/* Filter Tabs */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80 text-xs">
-                <span className="text-slate-400 font-medium mr-1 flex items-center gap-1">
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  Grade:
-                </span>
-                <button
-                  onClick={() => setFilterGrade('all')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                    filterGrade === 'all'
-                      ? 'bg-amber-400 text-slate-950 font-bold'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  Todas
-                </button>
-                {(Object.keys(GRADE_EXPLANATIONS) as GradeType[]).map(gradeKey => (
+              {/* Filter Rows: Leilão, Grade, Capacidade */}
+              <div className="space-y-3 pt-3 border-t border-slate-800/80 text-xs">
+                {/* Row 1: Leilão */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                    <Gavel className="w-3.5 h-3.5 text-amber-400" />
+                    {t.auctionFilter}
+                  </span>
                   <button
-                    key={gradeKey}
-                    onClick={() => setFilterGrade(gradeKey)}
+                    onClick={() => setFilterAuctionHouse('all')}
                     className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                      filterGrade === gradeKey
+                      filterAuctionHouse === 'all'
                         ? 'bg-amber-400 text-slate-950 font-bold'
                         : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    {gradeKey}
+                    {t.allAuctionsFilter}
                   </button>
-                ))}
 
-                <div className="h-4 w-px bg-slate-800 mx-1 hidden md:block" />
+                  <button
+                    onClick={() => setFilterAuctionHouse(filterAuctionHouse === 'VERIZON' ? 'all' : 'VERIZON')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                      filterAuctionHouse === 'VERIZON'
+                        ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-2 ring-red-400'
+                        : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
+                    }`}
+                  >
+                    <span>⚡ {t.verizonBadge}</span>
+                  </button>
 
-                <span className="text-slate-400 font-medium ml-1 mr-1">Tipo de Lote:</span>
-                <button
-                  onClick={() => setFilterLotType('all')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                    filterLotType === 'all'
-                      ? 'bg-slate-200 text-slate-950 font-bold'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setFilterLotType('single')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                    filterLotType === 'single'
-                      ? 'bg-slate-200 text-slate-950 font-bold'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  Unidade (1x)
-                </button>
-                <button
-                  onClick={() => setFilterLotType('small')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                    filterLotType === 'small'
-                      ? 'bg-slate-200 text-slate-950 font-bold'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  Pequenos (3 a 8x)
-                </button>
-                <button
-                  onClick={() => setFilterLotType('wholesale')}
-                  className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                    filterLotType === 'wholesale'
-                      ? 'bg-slate-200 text-slate-950 font-bold'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  Atacado (10x a 25x)
-                </button>
+                  <button
+                    onClick={() => setFilterAuctionHouse(filterAuctionHouse === 'ASSURANT' ? 'all' : 'ASSURANT')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                      filterAuctionHouse === 'ASSURANT'
+                        ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-400'
+                        : 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
+                    }`}
+                  >
+                    <span>🔹 {t.assurantBadge}</span>
+                  </button>
 
-                <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+                  {/* Dynamic auction house buttons */}
+                  {Array.from(new Set(auctions.map(a => a.auctionHouse))).filter(h => h && !/verizon/i.test(h) && !/assurant/i.test(h)).slice(0, 5).map(house => (
+                    <button
+                      key={house}
+                      onClick={() => setFilterAuctionHouse(filterAuctionHouse === house ? 'all' : house)}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                        filterAuctionHouse === house
+                          ? 'bg-slate-200 text-slate-950 font-bold'
+                          : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      {house.length > 22 ? house.slice(0, 20) + '...' : house}
+                    </button>
+                  ))}
+                </div>
 
-                <button
-                  onClick={() => setFilterAuctionHouse(filterAuctionHouse === 'VERIZON' ? 'all' : 'VERIZON')}
-                  className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
-                    filterAuctionHouse === 'VERIZON'
-                      ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
-                      : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
-                  }`}
-                >
-                  <span>⚡ Lotes VERIZON</span>
-                </button>
+                {/* Row 2: Grade */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                    {t.gradeFilter}
+                  </span>
+                  <button
+                    onClick={() => setFilterGrade('all')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                      filterGrade === 'all'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    {t.allGradesFilter}
+                  </button>
+                  {['Grade A+', 'Grade A', 'Grade B', 'Grade C', 'DNA', 'DNB', 'DNC', 'DND'].map(gradeKey => (
+                    <button
+                      key={gradeKey}
+                      onClick={() => setFilterGrade(filterGrade === gradeKey ? 'all' : gradeKey)}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                        filterGrade === gradeKey
+                          ? 'bg-amber-400 text-slate-950 font-bold'
+                          : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      {gradeKey}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Row 3: Capacidade */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5 text-emerald-400" />
+                    {t.capacityFilter}
+                  </span>
+                  <button
+                    onClick={() => setFilterCapacity('all')}
+                    className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                      filterCapacity === 'all'
+                        ? 'bg-amber-400 text-slate-950 font-bold'
+                        : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                    }`}
+                  >
+                    {t.allCapacitiesFilter}
+                  </button>
+                  {['64GB', '128GB', '256GB', '512GB', '1TB'].map(cap => (
+                    <button
+                      key={cap}
+                      onClick={() => setFilterCapacity(filterCapacity === cap ? 'all' : cap)}
+                      className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                        filterCapacity === cap
+                          ? 'bg-amber-400 text-slate-950 font-bold'
+                          : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      {cap}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -797,14 +927,17 @@ export default function App() {
               <span>
                 Exibindo <strong>{filteredAuctions.length}</strong> leilões ativos de iPhones
               </span>
-              {(filterGrade !== 'all' || filterLotType !== 'all' || searchQuery) && (
+              {(filterGrade !== 'all' || filterCapacity !== 'all' || filterAuctionHouse !== 'all' || filterModel !== 'all' || searchQuery) && (
                 <button
                   onClick={() => {
                     setFilterGrade('all');
+                    setFilterCapacity('all');
+                    setFilterAuctionHouse('all');
+                    setFilterModel('all');
                     setFilterLotType('all');
                     setSearchQuery('');
                   }}
-                  className="text-amber-400 hover:underline"
+                  className="text-amber-400 hover:underline font-semibold"
                 >
                   Limpar filtros
                 </button>
@@ -819,6 +952,9 @@ export default function App() {
                 <button
                   onClick={() => {
                     setFilterGrade('all');
+                    setFilterCapacity('all');
+                    setFilterAuctionHouse('all');
+                    setFilterModel('all');
                     setFilterLotType('all');
                     setSearchQuery('');
                   }}
@@ -828,18 +964,70 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredAuctions.map(lot => (
-                  <AuctionCard
-                    key={lot.id}
-                    lot={lot}
-                    onSelectLot={lotItem => setSelectedLotForDetail(lotItem)}
-                    onQuickBid={lotItem => setSelectedLotForDetail(lotItem)}
-                    onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
-                    currency={currency}
-                    usdRate={usdRate}
-                  />
-                ))}
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {paginatedAuctions.map(lot => (
+                    <AuctionCard
+                      key={lot.id}
+                      lot={lot}
+                      onSelectLot={lotItem => setSelectedLotForDetail(lotItem)}
+                      onQuickBid={lotItem => setSelectedLotForDetail(lotItem)}
+                      onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
+                      currency={currency}
+                      usdRate={usdRate}
+                    />
+                  ))}
+                </div>
+
+                {/* Ultra-Fast Responsive Pagination Bar */}
+                {totalAuctionsPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
+                    <div>
+                      Exibindo <strong className="text-white">{(auctionsPage - 1) * ITEMS_PER_PAGE + 1}</strong> a <strong className="text-white">{Math.min(auctionsPage * ITEMS_PER_PAGE, filteredAuctions.length)}</strong> de <strong className="text-white">{filteredAuctions.length}</strong> lotes legíveis
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 font-semibold">
+                      <button
+                        disabled={auctionsPage === 1}
+                        onClick={() => {
+                          setAuctionsPage(p => Math.max(1, p - 1));
+                          window.scrollTo({ top: 200, behavior: 'smooth' });
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
+                      >
+                        Anterior
+                      </button>
+
+                      {Array.from({ length: totalAuctionsPages }, (_, i) => i + 1).map(p => (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            setAuctionsPage(p);
+                            window.scrollTo({ top: 200, behavior: 'smooth' });
+                          }}
+                          className={`w-8 h-8 rounded-lg transition-all font-mono text-xs ${
+                            auctionsPage === p
+                              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20'
+                              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+
+                      <button
+                        disabled={auctionsPage === totalAuctionsPages}
+                        onClick={() => {
+                          setAuctionsPage(p => Math.min(totalAuctionsPages, p + 1));
+                          window.scrollTo({ top: 200, behavior: 'smooth' });
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
+                      >
+                        Próximo
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </section>

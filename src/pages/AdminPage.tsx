@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { getDeviceImageUrl } from '../utils/deviceImages';
+import { fetchLivePtaxRate } from '../utils/ptaxService';
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -91,6 +92,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // ----------------------------------------------------
   const [addAssurantFiveUsd, setAddAssurantFiveUsd] = useState(true);
   const [assurantMarkupAmount, setAssurantMarkupAmount] = useState<number>(5);
+
+  // ----------------------------------------------------
+  // MACBOOK MARGIN OPTION (<= $500: +$25 | > $500: +$40)
+  // ----------------------------------------------------
+  const [macbookMarginActive, setMacbookMarginActive] = useState<boolean>(true);
 
   interface VerizonGroupedLot {
     lotNumber: string;
@@ -213,7 +219,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     if (g.includes('A') && !g.includes('A/B') && !g.includes('B(')) return 'Grade A';
     if (g.includes('B') || g.includes('A/B')) return 'Grade B';
     if (g.includes('C') || g.includes('C(T)')) return 'Grade C';
-    if (g.includes('CPO') || g.includes('REFURB')) return 'CPO Refurbished';
+    if (g.includes('CPO') || g.includes('REFURB')) return 'Grade A+';
     return 'Grade C';
   };
 
@@ -810,6 +816,251 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   </Item>
 </StockList>`;
 
+  const SAMPLE_MACBOOKS_TEXT = `2021 Apple M1 Pro MacBook Pro 16" 90%+ Battery 3.20GHz/16GB/512GB SSD (Silver) A2485
+$989.00
+
+2020 Apple M1 MacBook Air 13" 90%+ Battery 8GB/128GB SSD (Gray) A2337
+$509.00
+
+2021 Apple M1 Pro MacBook Pro 16.2" 90%+ Battery 3.20GHz/16GB/512GB SSD (Gray) A2485
+$989.00
+
+2019 Apple MacBook Pro 13.3" i7 2.80GHz/8GB/512GB SSD (Space Gray) - A1989
+$413.01
+
+2023 Apple M3 Pro MacBook Pro 14" 90%+ Battery 4.05GHz/18GB/512GB SSD (Black) A2992
+$1,389.00
+
+2019 Apple MacBook Pro 13" 90%+ Battery i5 2.40GHz/16GB/256GB SSD (Silver) A1989
+$387.83`;
+
+  const SAMPLE_PRONTA_ENTREGA_TEXT = `Apple
+Iphone 11 Pro Max 64 GB BLQ
+1560145
+Phone
+$0.00
+0 / 5 / 0 
+
+Apple
+Iphone 11 Pro Max 64 GB DEF
+1560144
+Phone
+$156.00
+0 / 1 / 0 
+
+Apple
+Iphone 12 64 GB BLQ
+1554311
+Phone
+$0.00
+0 / 1 / 0 
+
+Apple
+Iphone 12 MINI 128 GB DEF
+1560158
+Phone
+$132.00
+0 / 1 / 0 
+
+Apple
+Iphone 12 Pro 512GB A
+1490759
+Phone
+$280.00
+0 / 1 / 0 
+
+Apple
+Iphone 12 Pro Max 128GB A
+1725947
+Phone
+$295.00
+0 / 7 / 0 
+
+Apple
+Iphone 12 Pro Max 256GB A
+1720852
+Phone
+$315.00
+0 / 3 / 0 
+
+Apple
+IPhone 12 ProMax 128GB AB
+1726460
+Phone
+$285.00
+0 / 4 / 0 `;
+
+  // ----------------------------------------------------
+  // MACBOOKS TEXT PARSER (WITH MARGIN SELECTION OPTION)
+  // ----------------------------------------------------
+  const parseMacbooksText = (text: string, applyMargin: boolean = true): StockAppleItem[] => {
+    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const items: StockAppleItem[] = [];
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      // Price line: starts with $ or numeric with price format
+      if (/^\$?\d+([.,]\d{2})?$/i.test(line) || (/^\$/i.test(line) && !line.includes('Apple'))) {
+        const priceRaw = parsePrice(line);
+        if (priceRaw <= 0) continue;
+
+        let finalPrice = priceRaw;
+        if (applyMargin) {
+          if (priceRaw <= 500) {
+            finalPrice = priceRaw + 25;
+          } else {
+            finalPrice = priceRaw + 40;
+          }
+        }
+
+        const descLine = i > 0 ? rawLines[i - 1] : `Apple MacBook Item ${items.length + 1}`;
+        if (descLine && !/^\$?\d+/i.test(descLine)) {
+          const modelMatch = descLine.match(/MacBook\s+(Pro|Air)\s*(\d+(\.\d+)?"?)?/i);
+          const modelName = modelMatch ? modelMatch[0] : 'MacBook Pro';
+
+          const capMatch = descLine.match(/\b(\d+(GB|TB))\s*(SSD)?\b/i);
+          const capacity = capMatch ? capMatch[0] : '512GB SSD';
+
+          const colorMatch = descLine.match(/\((Silver|Space Gray|Gray|Black|Midnight|Starlight|Gold)\)/i);
+          const color = colorMatch ? colorMatch[1] : 'Space Gray';
+
+          const aNumMatch = descLine.match(/\bA\d{4}\b/i);
+          const modelNumber = aNumMatch ? aNumMatch[0] : '';
+
+          items.push({
+            id: `macbook-${Date.now()}-${items.length}`,
+            itemNumber: modelNumber || `MAC-${1000 + items.length}`,
+            warehouse: 'Miami Hub - Apple Macbooks',
+            category: 'Laptop',
+            make: 'Apple',
+            model: descLine.length > 55 ? descLine.slice(0, 55) + '...' : descLine,
+            modelNumber,
+            capacity,
+            description: descLine,
+            carrier: 'UNLOCKED',
+            lockStatus: 'UNLOCKED',
+            color,
+            grade: 'Grade A+',
+            availableQuantity: 1,
+            listPrice: finalPrice,
+            currency: 'USD',
+            deviceType: 'iPhone',
+            status: 'APPROVED'
+          });
+        }
+      }
+    }
+    return items;
+  };
+
+  // ----------------------------------------------------
+  // PRONTA ENTREGA TEXT PARSER (PRICE > 0 AND MIDDLE QTY > 0)
+  // ----------------------------------------------------
+  const parseProntaEntregaText = (text: string): StockAppleItem[] => {
+    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const filteredLines = rawLines.filter(l => 
+      !/^(Manage Products|Available|All Manufacturers|All Categories|Search Products|Manufacturer Name|Product Name|SKU\/Barcode|Category Name|Selling Price|Need\/Have\/OnPO)$/i.test(l)
+    );
+
+    const items: StockAppleItem[] = [];
+
+    // Check if tab-separated line
+    const tabLines = filteredLines.filter(l => l.includes('\t'));
+    if (tabLines.length > 0) {
+      tabLines.forEach((line, idx) => {
+        const cols = line.split('\t').map(c => c.trim());
+        if (cols.length >= 6) {
+          const make = cols[0] || 'Apple';
+          const modelName = cols[1] || 'iPhone';
+          const sku = cols[2] || '';
+          const category = cols[3] || 'Phone';
+          const price = parsePrice(cols[4]);
+          const needHaveOnPO = cols[5] || '';
+
+          const qtyParts = needHaveOnPO.split('/').map(p => p.trim());
+          const haveQty = qtyParts.length >= 2 ? parseInt(qtyParts[1], 10) || 0 : parseInt(qtyParts[0], 10) || 0;
+
+          if (price > 0 && haveQty > 0) {
+            const capMatch = modelName.match(/\b(\d+\s*(GB|TB))\b/i);
+            const capacity = capMatch ? capMatch[0] : '128GB';
+
+            const gradeMatch = modelName.match(/\b(BLQ|DEF|A\+|A|B|C|AB)\b/i);
+            const grade = gradeMatch ? gradeMatch[0] : 'Grade A';
+
+            items.push({
+              id: `pronta-entrega-${Date.now()}-${idx}`,
+              itemNumber: sku || `PE-${1000 + idx}`,
+              warehouse: 'Miami Hub - Pronta Entrega',
+              category,
+              make,
+              model: modelName,
+              modelNumber: sku,
+              capacity,
+              description: `${make} ${modelName} - SKU ${sku}`,
+              carrier: 'UNLOCKED',
+              lockStatus: 'UNLOCKED',
+              color: 'Mixed',
+              grade,
+              availableQuantity: haveQty,
+              listPrice: price,
+              currency: 'USD',
+              deviceType: /ipad/i.test(modelName) ? 'iPad' : /watch/i.test(modelName) ? 'Apple Watch' : 'iPhone',
+              status: 'APPROVED'
+            });
+          }
+        }
+      });
+    } else {
+      // Chunks by line containing Need/Have/OnPO format: "0 / 5 / 0"
+      for (let i = 0; i < filteredLines.length; i++) {
+        const line = filteredLines[i];
+        if (/^\d+\s*\/\s*\d+\s*\/\s*\d+$/.test(line)) {
+          const qtyParts = line.split('/').map(p => p.trim());
+          const haveQty = qtyParts.length >= 2 ? parseInt(qtyParts[1], 10) || 0 : 0;
+
+          const priceLine = i >= 1 ? filteredLines[i - 1] : '';
+          const catLine = i >= 2 ? filteredLines[i - 2] : 'Phone';
+          const skuLine = i >= 3 ? filteredLines[i - 3] : '';
+          const nameLine = i >= 4 ? filteredLines[i - 4] : '';
+          const makeLine = i >= 5 ? filteredLines[i - 5] : 'Apple';
+
+          const price = parsePrice(priceLine);
+
+          if (price > 0 && haveQty > 0 && nameLine) {
+            const capMatch = nameLine.match(/\b(\d+\s*(GB|TB))\b/i);
+            const capacity = capMatch ? capMatch[0] : '128GB';
+
+            const gradeMatch = nameLine.match(/\b(BLQ|DEF|A\+|A|B|C|AB)\b/i);
+            const grade = gradeMatch ? gradeMatch[0] : 'Grade A';
+
+            items.push({
+              id: `pronta-entrega-${Date.now()}-${items.length}`,
+              itemNumber: skuLine || `PE-${1000 + items.length}`,
+              warehouse: 'Miami Hub - Pronta Entrega',
+              category: catLine,
+              make: makeLine,
+              model: nameLine,
+              modelNumber: skuLine,
+              capacity,
+              description: `${makeLine} ${nameLine} - SKU ${skuLine}`,
+              carrier: 'UNLOCKED',
+              lockStatus: 'UNLOCKED',
+              color: 'Mixed',
+              grade,
+              availableQuantity: haveQty,
+              listPrice: price,
+              currency: 'USD',
+              deviceType: /ipad/i.test(nameLine) ? 'iPad' : /watch/i.test(nameLine) ? 'Apple Watch' : 'iPhone',
+              status: 'APPROVED'
+            });
+          }
+        }
+      }
+    }
+
+    return items;
+  };
+
   // ----------------------------------------------------
   // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
   // ----------------------------------------------------
@@ -828,17 +1079,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const itemNumber = normalizeField(row, 'Item #', 'Item#', 'ItemNumber', 'item_number', 'item-number', 'Item', 'id') || `ITM-${100000 + idx}`;
       const warehouse = normalizeField(row, 'Warehouse', 'warehouse', 'Armazem') || 'W23-ATT';
       const category = normalizeField(row, 'Category', 'category', 'Categoria') || '';
-      const make = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM') || 'Apple';
+      const make = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM', 'Manufacturer', 'manufacturer') || 'Apple';
       const description = normalizeField(row, 'Description', 'description', 'Descricao') || '';
       const model = normalizeField(row, 'Model', 'model', 'Modelo', 'ModelName', 'model_name', 'DeviceModel', 'device_model', 'Product', 'product', 'ItemName', 'item_name') || (description ? description.split(/\s+/).slice(0, 4).join(' ') : 'iPhone');
       const modelNumber = normalizeField(row, 'Model Number', 'ModelNumber', 'model_number', 'PartNumber', 'part_number') || '';
-      const capacity = normalizeField(row, 'Capacity', 'capacity', 'Capacidade', 'Storage', 'storage') || '128GB';
+      const capacity = normalizeField(row, 'Capacity', 'capacity', 'Capacidade', 'Storage', 'storage', 'Memory', 'memory') || '128GB';
       const carrier = normalizeField(row, 'Carrier', 'carrier', 'Operadora') || '';
       const lockStatus = normalizeField(row, 'Lock Status', 'LockStatus', 'lock_status', 'lock-status', 'StatusBloqueio') || '';
       const color = normalizeField(row, 'Color', 'color', 'Cor') || 'Space Gray';
       const grade = normalizeField(row, 'Grade', 'grade', 'Condicao') || 'DLS A';
       
-      const qtyRaw = normalizeField(row, 'Available Quantity', 'AvailableQuantity', 'Quantity', 'qty', 'Quantidade') || '1';
+      const qtyRaw = normalizeField(row, 'Available Quantity', 'AvailableQuantity', 'Quantity Available', 'QuantityAvailable', 'Quantity', 'qty', 'Quantidade') || '1';
       const availableQuantity = Math.max(1, parseInt(String(qtyRaw).replace(/[^0-9]/g, '') || '1', 10) || 1);
       
       const priceRaw = normalizeField(row, 'List Price', 'ListPrice', 'list_price', 'Price', 'price', 'Preco') || '0';
@@ -1722,11 +1973,71 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
   const handleProcessPastedText = () => {
     if (!pasteText.trim()) {
-      showNotice('Cole o texto da sua planilha ou código XML primeiro.', 'error');
+      showNotice('Cole o texto para importação primeiro.', 'error');
       return;
     }
 
-    // Check if pasted content is XML
+    // 1. MACBOOKS PASTE IMPORTER
+    if (presetFormat === 'MACBOOKS' || /MacBook|A2485|A2337|A2992|A1989/i.test(pasteText)) {
+      const macbookItems = parseMacbooksText(pasteText, macbookMarginActive);
+      if (macbookItems.length === 0) {
+        showNotice('Nenhum MacBook reconhecido no texto colado. Verifique o formato (Título na 1ª linha e Preço $ na 2ª linha).', 'error');
+        return;
+      }
+      setPresetFormat('MACBOOKS');
+      setStockAppleGroupMode('individual');
+      setUploadedFileName('MacBooks (Texto Colado)');
+      processStockAppleRows(macbookItems.map(it => ({
+        'Item #': it.itemNumber,
+        'Warehouse': it.warehouse,
+        'Category': it.category,
+        'Make': it.make,
+        'Model': it.model,
+        'Capacity': it.capacity,
+        'Description': it.description,
+        'Carrier': it.carrier,
+        'Lock Status': it.lockStatus,
+        'Color': it.color,
+        'Grade': it.grade,
+        'Available Quantity': it.availableQuantity,
+        'List Price': it.listPrice,
+        'Currency': it.currency
+      })), true);
+      showNotice(`🔥 ${macbookItems.length} MacBooks processados com sucesso! Margem (${macbookMarginActive ? '<=$500 (+$25) / >$500 (+$40)' : 'Sem Margem'}) aplicada!`, 'success');
+      return;
+    }
+
+    // 2. PRONTA ENTREGA PASTE IMPORTER
+    if (presetFormat === 'STOCK_APPLE' || /Need\/Have\/OnPO|Manage Products|Iphone 11 Pro Max/i.test(pasteText)) {
+      const prontaItems = parseProntaEntregaText(pasteText);
+      if (prontaItems.length === 0) {
+        showNotice('Nenhum produto com valor (> $0) e estoque positivo encontrado no texto colado.', 'error');
+        return;
+      }
+      setPresetFormat('STOCK_APPLE');
+      setStockAppleGroupMode('individual');
+      setUploadedFileName('Estoque Pronta Entrega (Texto Colado)');
+      processStockAppleRows(prontaItems.map(it => ({
+        'Item #': it.itemNumber,
+        'Warehouse': it.warehouse,
+        'Category': it.category,
+        'Make': it.make,
+        'Model': it.model,
+        'Capacity': it.capacity,
+        'Description': it.description,
+        'Carrier': it.carrier,
+        'Lock Status': it.lockStatus,
+        'Color': it.color,
+        'Grade': it.grade,
+        'Available Quantity': it.availableQuantity,
+        'List Price': it.listPrice,
+        'Currency': it.currency
+      })), true);
+      showNotice(`🍏 ${prontaItems.length} Aparelhos de Pronta Entrega (preço > $0 e estoque positivo) importados com sucesso!`, 'success');
+      return;
+    }
+
+    // 3. XML OR OTHER TABULAR PASTE IMPORTER
     if (pasteText.trim().startsWith('<')) {
       try {
         const rows = parseXmlSpreadsheet(pasteText.trim());
@@ -1748,12 +2059,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           setPresetFormat('ASSURANT');
           setStockAppleGroupMode('individual');
           const { audit } = processStockAppleRows(rows, true);
-          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
+          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
+        } else if (isStockApple || (presetFormat as string) === 'STOCK_APPLE') {
           setPresetFormat('STOCK_APPLE');
           const { audit } = processStockAppleRows(rows);
-          showNotice(`XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else if (isVerizon || presetFormat === 'VERIZON') {
+          showNotice(`XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados.`, 'success');
+        } else if (isVerizon || (presetFormat as string) === 'VERIZON') {
           setPresetFormat('VERIZON');
           const grouped = processVerizonRows(rows);
           showNotice(`XML Padrão VERIZON processado! ${grouped.length} lotes agrupados.`);
@@ -1795,12 +2106,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         setPresetFormat('ASSURANT');
         setStockAppleGroupMode('individual');
         const { audit } = processStockAppleRows(rows, true);
-        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-      } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
+        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
+      } else if (isStockApple || (presetFormat as string) === 'STOCK_APPLE') {
         setPresetFormat('STOCK_APPLE');
         const { audit } = processStockAppleRows(rows);
-        showNotice(`Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-      } else if (isVerizon || presetFormat === 'VERIZON') {
+        showNotice(`Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados.`, 'success');
+      } else if (isVerizon || (presetFormat as string) === 'VERIZON') {
         setPresetFormat('VERIZON');
         const grouped = processVerizonRows(rows);
         showNotice(`Padrão VERIZON detectado! ${grouped.length} lotes agrupados.`);
@@ -2663,31 +2974,49 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-white text-sm flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span>Distribuição por Modelo de Smartphone</span>
+                  <span>Distribuição por Modelo</span>
                 </h3>
                 <span className="text-[11px] text-slate-400 font-mono">
-                  {auctions.length} lotes catalogados
+                  {auctions.length.toLocaleString()} lotes catalogados
                 </span>
               </div>
-              <div className="space-y-3 text-xs">
-                {Array.from(new Set(auctions.map(a => a.modelFamily))).slice(0, 5).map(model => {
-                  const count = auctions.filter(a => a.modelFamily === model).length;
-                  const pct = Math.round((count / auctions.length) * 100) || 10;
-                  return (
-                    <div key={model} className="space-y-1">
-                      <div className="flex justify-between text-slate-300 text-[11px]">
-                        <span className="font-medium text-white">{model}</span>
-                        <span className="font-mono text-amber-400">{count} lote(s) · {pct}%</span>
+              <div className="space-y-3 text-xs max-h-[340px] overflow-y-auto pr-1">
+                {(() => {
+                  const totalLots = auctions.length || 1;
+                  // Group by modelFamily
+                  const modelCountsMap = new Map<string, number>();
+                  auctions.forEach(a => {
+                    const modelName = a.modelFamily || 'Outros Modelos';
+                    modelCountsMap.set(modelName, (modelCountsMap.get(modelName) || 0) + 1);
+                  });
+                  // Sort descending by lot count
+                  const sortedModels = Array.from(modelCountsMap.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 6);
+
+                  const maxCount = sortedModels[0]?.[1] || 1;
+
+                  return sortedModels.map(([model, count]) => {
+                    const pctRaw = (count / totalLots) * 100;
+                    const pctStr = pctRaw < 1 ? pctRaw.toFixed(1) : Math.round(pctRaw).toString();
+                    const barWidth = Math.max(3, Math.min(100, Math.round((count / maxCount) * 100)));
+
+                    return (
+                      <div key={model} className="space-y-1">
+                        <div className="flex justify-between text-slate-300 text-[11px]">
+                          <span className="font-medium text-white truncate max-w-[220px]">{model}</span>
+                          <span className="font-mono text-amber-400 font-semibold">{count.toLocaleString()} lote(s) · {pctStr}%</span>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                          <div
+                            className="bg-gradient-to-r from-amber-500 to-amber-300 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-                        <div
-                          className="bg-gradient-to-r from-amber-500 to-amber-300 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
 
@@ -2696,31 +3025,76 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-white text-sm flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Distribuição por Grade Estético</span>
+                  <span>Distribuição por Grade</span>
                 </h3>
                 <span className="text-[11px] text-slate-400 font-mono">
-                  Laudo 30 pontos
+                  Auditado em {auctions.reduce((acc, l) => acc + l.quantity, 0).toLocaleString()} aparelhos
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
-                {(['Grade A+', 'Grade A', 'Grade B', 'Grade C'] as GradeType[]).map(grade => {
-                  const lotsWithGrade = auctions.filter(a => a.grade === grade);
-                  const totalGradeUnits = lotsWithGrade.reduce((acc, l) => acc + l.quantity, 0);
-                  return (
-                    <div key={grade} className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-xl space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-white text-xs">{grade}</span>
-                        <span className="text-[10px] text-amber-400 font-mono">{lotsWithGrade.length} lotes</span>
+                {(() => {
+                  const gradeCategories = [
+                    {
+                      label: 'Grade A+ / DNA',
+                      matches: (g: string) => /A\+|DNA|DLS A\+|AA\+/i.test(g),
+                      desc: 'Impecável / Mint (Com Laudo)',
+                      badgeColor: 'border-emerald-500/40 text-emerald-400'
+                    },
+                    {
+                      label: 'Grade A',
+                      matches: (g: string) => /\bGrade A\b|\bDLS A\b|^A$/i.test(g) && !/A\+/i.test(g),
+                      desc: 'Excelente Estado de Conservação',
+                      badgeColor: 'border-cyan-500/40 text-cyan-400'
+                    },
+                    {
+                      label: 'Grade B / DNB',
+                      matches: (g: string) => /Grade B|DNB|DLS B|^B$/i.test(g),
+                      desc: 'Marcas Leves de Uso (Testados)',
+                      badgeColor: 'border-amber-500/40 text-amber-400'
+                    },
+                    {
+                      label: 'Grade C / DNC',
+                      matches: (g: string) => /Grade C|DNC|DLS C|^C$/i.test(g),
+                      desc: 'Econômico / Funcional',
+                      badgeColor: 'border-orange-500/40 text-orange-400'
+                    },
+                    {
+                      label: 'Grade DND / D',
+                      matches: (g: string) => /Grade D|DND|DLS D|^D$/i.test(g),
+                      desc: 'Desgaste Estético Pesado',
+                      badgeColor: 'border-rose-500/40 text-rose-400'
+                    },
+                    {
+                      label: 'Outras Grades',
+                      matches: (g: string) => !/A\+|DNA|DLS A\+|AA\+|\bGrade A\b|\bDLS A\b|^A$|Grade B|DNB|DLS B|^B$|Grade C|DNC|DLS C|^C$|Grade D|DND|DLS D|^D$/i.test(g),
+                      desc: 'Outras Classificações',
+                      badgeColor: 'border-slate-700 text-slate-300'
+                    }
+                  ];
+
+                  return gradeCategories.map(cat => {
+                    const matchingLots = auctions.filter(a => cat.matches(a.grade || ''));
+                    const totalUnits = matchingLots.reduce((acc, l) => acc + l.quantity, 0);
+
+                    // Skip empty "Outras Grades" if 0
+                    if (cat.label === 'Outras Grades' && matchingLots.length === 0) return null;
+
+                    return (
+                      <div key={cat.label} className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className={`font-bold text-xs ${cat.badgeColor}`}>{cat.label}</span>
+                          <span className="text-[10px] text-amber-400 font-mono font-bold">{matchingLots.length.toLocaleString()} lotes</span>
+                        </div>
+                        <span className="text-lg font-black text-slate-100 font-mono block">
+                          {totalUnits.toLocaleString()} aparelhos
+                        </span>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {cat.desc}
+                        </span>
                       </div>
-                      <span className="text-lg font-black text-slate-200 font-mono block">
-                        {totalGradeUnits} aparelhos
-                      </span>
-                      <span className="text-[10px] text-slate-500 block">
-                        {grade === 'Grade A+' ? 'Zero detalhes (Mint)' : grade === 'Grade A' ? 'Excelente estado' : grade === 'Grade B' ? 'Marcas leves' : 'Econômico'}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>
@@ -2795,7 +3169,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* TAB 1: UPLOAD / IMPORTAR (EXCEL, CSV & XML) */}
+      {/* TAB 1: UPLOAD / IMPORTAR (EXCEL, CSV & TEXTO) */}
       {/* ======================================================== */}
       {adminTab === 'upload' && (
         <div className="space-y-6">
@@ -2835,49 +3209,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     {isLoadingVerizon ? 'Lendo e Agrupando...' : '⚡ Carregar CSV VERIZON Oficial (Anexo)'}
                   </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleLoadOfficialStockCsv}
-                  disabled={isLoadingStockCsv}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95"
-                  title="Carregar a planilha oficial em anexo com 8.160 itens (filtra apenas iPhones, iPads e Watches UNLOCKED)"
-                >
-                  {isLoadingStockCsv ? (
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <Package className="w-4 h-4 text-emerald-200" />
-                  )}
-                  <span>
-                    {isLoadingStockCsv ? 'Lendo e Filtrando...' : '🍏 Carregar Planilha Apple Oficial (8.160 itens)'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadSampleStockXml}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
-                  title="Testar importação com XML do padrão Estoque Apple (com UNLOCKED e demonstração do filtro de bloqueados)"
-                >
-                  <Code className="w-4 h-4 text-emerald-400" />
-                  <span>⚡ Exemplo XML Apple (Stock)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadSampleXml}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
-                  title="Testar importação com XML modelo da Verizon"
-                >
-                  <Code className="w-4 h-4 text-amber-400" />
-                  <span>⚡ Exemplo XML (Verizon)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadSampleAssurantXml}
-                  className="px-4 py-2.5 bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-500/40 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-sm"
-                  title="Testar importação com XML modelo da Assurant (apenas UNLOCKED + $5 USD)"
-                >
-                  <Code className="w-4 h-4 text-indigo-400" />
-                  <span>⚡ Exemplo XML (Assurant)</span>
-                </button>
               </div>
             </div>
           </div>
@@ -2888,39 +3219,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               <div>
                 <span className="text-xs font-bold text-slate-300 block">Formato de Importação:</span>
                 <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('ASSURANT');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'ASSURANT'
-                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>★ Leilão ASSURANT (XLSX / XML / CSV)</span>
-                    <span className="px-1.5 py-0.2 bg-indigo-300 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
-                      UNLOCKED +$5
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPresetFormat('STOCK_APPLE')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'STOCK_APPLE'
-                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-1 ring-emerald-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>🍏 Estoque Pronta Entrega (XML / CSV Stock List)</span>
-                    <span className="px-1.5 py-0.2 bg-emerald-400 text-slate-950 font-black rounded text-[9px] uppercase tracking-wider">
-                      UNLOCKED ONLY
-                    </span>
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => setPresetFormat('VERIZON')}
@@ -2936,46 +3234,28 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setPresetFormat('MARKETPLACE_1');
+                      setPresetFormat('ASSURANT');
                       setStockAppleGroupMode('individual');
                     }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_1'
-                        ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25 ring-1 ring-sky-400'
+                      presetFormat === 'ASSURANT'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400'
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>★ Marketplace 1 (XML / CSV)</span>
+                    <span>★ Leilão ASSURANT (XLSX / CSV)</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setPresetFormat('MARKETPLACE_2');
-                      setStockAppleGroupMode('individual');
-                    }}
+                    onClick={() => setPresetFormat('STOCK_APPLE')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_2'
-                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/25 ring-1 ring-cyan-400'
+                      presetFormat === 'STOCK_APPLE'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-1 ring-emerald-400'
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>★ Marketplace 2 (XML / CSV)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('MARKETPLACE_3');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_3'
-                        ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-1 ring-teal-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>★ Marketplace 3 (XML / CSV)</span>
+                    <span>🍏 Importador Pronta Entrega (Texto / CSV)</span>
                   </button>
 
                   <button
@@ -2990,7 +3270,52 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>💻 Leilão Macbooks (XML / CSV)</span>
+                    <span>💻 Importador Macbooks (Texto com Margem)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_1');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_1'
+                        ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25 ring-1 ring-sky-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>🛒 Marketplace 1 - RecirQ (CSV / XLSX)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_2');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_2'
+                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/25 ring-1 ring-cyan-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>🛒 Marketplace 2 - WeSell (CSV / XLSX)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPresetFormat('MARKETPLACE_3');
+                      setStockAppleGroupMode('individual');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      presetFormat === 'MARKETPLACE_3'
+                        ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-1 ring-teal-400'
+                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span>🛒 Marketplace 3 - Mannapov (CSV / XLSX)</span>
                   </button>
 
                   <button
@@ -3019,7 +3344,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   }`}
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Arquivo (.xlsx / .csv / .xml)</span>
+                  <span>Arquivo (.xlsx / .csv)</span>
                 </button>
 
                 <button
@@ -3032,7 +3357,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>Colar Texto ou XML (Ctrl+V)</span>
+                  <span>Colar Texto de Importação (Ctrl+V)</span>
                 </button>
               </div>
             </div>
@@ -3048,7 +3373,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileUpload}
-                  accept=".xlsx, .xls, .xlx, .csv, .xml, text/xml, application/xml"
+                  accept=".xlsx, .xls, .xlx, .csv"
                   className="hidden"
                 />
                 <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
@@ -3056,13 +3381,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                 </div>
                 <div className="space-y-1">
                   <span className="text-sm font-bold text-white block">
-                    {uploadedFileName ? `Arquivo Carregado: ${uploadedFileName}` : 'Clique para subir ou arraste sua planilha (XML / CSV / Excel) aqui'}
+                    {uploadedFileName ? `Arquivo Carregado: ${uploadedFileName}` : 'Clique para subir ou arraste sua planilha (CSV / Excel) aqui'}
                   </span>
                   <span className="text-xs text-slate-400 block">
-                    Formatos aceitos: Arquivos XML (.xml), CSV (.csv) e Microsoft Excel (.xlsx, .xls)
-                  </span>
-                  <span className="text-[11px] text-emerald-400 block font-medium">
-                    🛡️ Regra de Filtro Ativa: Na importação Apple, são aprovados exclusivamente iPhones, iPads e Apple Watches DESBLOQUEADOS (UNLOCKED).
+                    Formatos aceitos: Arquivos CSV (.csv) e Microsoft Excel (.xlsx, .xls)
                   </span>
                 </div>
               </div>
@@ -3071,8 +3393,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   <div className="text-xs text-emerald-200">
                     <span className="font-bold block">Planilha pronta: {uploadedFileName}</span>
                     <span className="text-[11px] text-emerald-400">
-                      {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT')
-                        ? `${stockAppleAudit.approvedCount.toLocaleString()} lotes UNLOCKED prontos para carregar`
+                      {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT' || presetFormat === 'MARKETPLACE_1' || presetFormat === 'MARKETPLACE_2' || presetFormat === 'MARKETPLACE_3')
+                        ? `${stockAppleAudit.approvedCount.toLocaleString()} itens/lotes prontos para carregar`
                         : `${parsedPreviewRows.length.toLocaleString()} linhas lidas`}
                     </span>
                   </div>
@@ -3088,35 +3410,87 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               )}
             </div>
             ) : (
-              /* Mode 2: Paste Direct from Excel or Paste XML */
+              /* Mode 2: Paste Direct Text Import */
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs text-slate-300 block font-medium">
-                    Cole abaixo as linhas copiadas do Excel, CSV ou o código XML da sua planilha:
+                    Cole abaixo o texto formatado do leilão ou inventário:
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setPasteText(SAMPLE_STOCK_APPLE_XML)}
-                      className="text-emerald-400 hover:underline text-[11px] font-bold"
+                      onClick={() => {
+                        setPasteText(SAMPLE_MACBOOKS_TEXT);
+                        setPresetFormat('MACBOOKS');
+                      }}
+                      className="text-purple-400 hover:underline text-[11px] font-bold flex items-center gap-1"
                     >
-                      Inserir Exemplo XML Apple
+                      <span>💻 Inserir Modelo Macbooks</span>
                     </button>
                     <span className="text-slate-600">·</span>
                     <button
                       type="button"
-                      onClick={() => setPasteText(SAMPLE_VERIZON_XML)}
-                      className="text-amber-400 hover:underline text-[11px] font-semibold"
+                      onClick={() => {
+                        setPasteText(SAMPLE_PRONTA_ENTREGA_TEXT);
+                        setPresetFormat('STOCK_APPLE');
+                      }}
+                      className="text-emerald-400 hover:underline text-[11px] font-bold flex items-center gap-1"
                     >
-                      Inserir Exemplo XML Verizon
+                      <span>🍏 Inserir Modelo Pronta Entrega</span>
                     </button>
                   </div>
                 </div>
+
+                {/* MacBook Margin Selection Control Banner */}
+                {presetFormat === 'MACBOOKS' && (
+                  <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-purple-600 text-white font-black text-[10px] uppercase">
+                        MARGEM DE LUCRO MACBOOKS
+                      </span>
+                      <span className="text-xs text-purple-200">
+                        Regra: Preço &lt;= $500 (+ $25 USD) e Preço &gt; $500 (+ $40 USD)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMacbookMarginActive(!macbookMarginActive)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        macbookMarginActive
+                          ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
+                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{macbookMarginActive ? '✅ Margem Ativa (+$25 / +$40)' : '❌ Margem Desativada (Valor Original)'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Pronta Entrega Info Banner */}
+                {presetFormat === 'STOCK_APPLE' && (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-emerald-200">
+                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px] uppercase">
+                        PRONTA ENTREGA
+                      </span>
+                      <span>
+                        Filtro automático: Apenas insere produtos com valor &gt; $0.00 e quantidade &gt; 0 (número do meio em Need/Have/OnPO).
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <textarea
                   rows={8}
                   value={pasteText}
                   onChange={e => setPasteText(e.target.value)}
-                  placeholder="Cole aqui linhas tabulares do Excel OU o código XML completo (ex: <?xml version='1.0'?> <Workbook>... ou <listings><listing>...)"
+                  placeholder={
+                    presetFormat === 'MACBOOKS'
+                      ? "Cole aqui as linhas do leilão Macbooks:\n2021 Apple M1 Pro MacBook Pro 16\" 90%+ Battery 3.20GHz/16GB/512GB SSD (Silver) A2485\n$989.00"
+                      : presetFormat === 'STOCK_APPLE'
+                      ? "Cole aqui o texto do inventário Pronta Entrega:\nApple\nIphone 11 Pro Max 64 GB DEF\n1560144\nPhone\n$156.00\n0 / 1 / 0"
+                      : "Cole aqui as linhas copiadas do Excel, CSV ou texto do leilão..."
+                  }
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400"
                 />
                 <div className="flex items-center gap-2">
@@ -3126,7 +3500,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                     className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-md shadow-red-600/20"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Processar Dados Colados (Excel / CSV / XML)</span>
+                    <span>Processar Texto Colado</span>
                   </button>
                   <button
                     type="button"
@@ -4003,7 +4377,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                             <option value="Grade A">Grade A</option>
                             <option value="Grade B">Grade B</option>
                             <option value="Grade C">Grade C</option>
-                            <option value="CPO Refurbished">CPO Refurbished</option>
                           </select>
                         ) : (
                           <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 border border-slate-700">
@@ -4545,9 +4918,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({
           
           <div className="space-y-4 text-xs">
             <div>
-              <label className="text-slate-300 block mb-1 font-semibold">
-                Cotação PTAX Dólar Comercial (USD / BRL):
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-slate-300 font-semibold flex items-center gap-2">
+                  <span>Cotação PTAX Dólar Comercial (USD / BRL):</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Dólar Online
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await fetchLivePtaxRate();
+                    if (res && res.rate) {
+                      onUpdateUsdRate(res.rate);
+                      alert(`Dólar Online sincronizado com sucesso!\nTaxa Banco Central: R$ ${res.rate.toFixed(2)} (${res.source})`);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors shadow-sm"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Sincronizar Dólar Online (Bacen)</span>
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -4556,7 +4949,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
                   onChange={e => onUpdateUsdRate(parseFloat(e.target.value) || 5.75)}
                   className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-400 focus:outline-none focus:border-amber-400"
                 />
-                <span className="text-slate-400">Usado para cálculo em reais de todos os leilões</span>
+                <span className="text-slate-400">Usado para cálculo em reais de todos os leilões e invoices</span>
               </div>
             </div>
 

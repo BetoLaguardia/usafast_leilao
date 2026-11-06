@@ -45,7 +45,7 @@ export const GradeamentoPage: React.FC<GradeamentoPageProps> = ({
         </div>
       </div>
 
-      {/* Detalhamento dos Grades (A+, A, B, C, CPO) */}
+      {/* Detalhamento dos Grades (A+, A, B, C, DNA, DNB, DNC, DND) */}
       <div className="space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
@@ -184,14 +184,6 @@ export const GradeamentoPage: React.FC<GradeamentoPageProps> = ({
                 <td className="py-3 px-4 font-mono text-orange-400 font-semibold">80% a 85%</td>
                 <td className="py-3 px-4 text-emerald-400">Clean ESN / FMI OFF</td>
                 <td className="py-3 px-4">Revenda popular ou polimento</td>
-              </tr>
-              <tr className="hover:bg-slate-800/30">
-                <td className="py-3 px-4 font-bold text-indigo-400 font-mono">CPO Refurbished</td>
-                <td className="py-3 px-4">Nova oficial (Apple Refurbished)</td>
-                <td className="py-3 px-4">Nova sem qualquer marca (10/10)</td>
-                <td className="py-3 px-4 font-mono text-indigo-400 font-semibold">100% (Bateria nova)</td>
-                <td className="py-3 px-4 text-emerald-400">Clean ESN / FMI OFF</td>
-                <td className="py-3 px-4">Produto com caixa e garantia máxima</td>
               </tr>
             </tbody>
           </table>

@@ -60,18 +60,6 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     functionality: 'Placa-mãe, sensores e conexões 100% funcionais.',
     targetMarket: 'Perfeito para lojistas que fazem polimento ou recondicionamento estético.'
   },
-  'CPO Refurbished': {
-    label: 'CPO / Open Box (Apple Refurbished)',
-    badgeColor: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
-    borderColor: 'border-indigo-500/40',
-    textColor: 'text-indigo-400',
-    shortDesc: 'Aparelhos recondicionados certificados ou caixas abertas em devolução de grandes redes.',
-    screenDesc: 'Tela nova original instalada por centro credenciado.',
-    housingDesc: 'Carcaça nova sem detalhes. Estado cosmético 10/10.',
-    batteryMin: '100% de capacidade nova original',
-    functionality: 'Aprovado nos testes de fábrica com certificação de recondicionamento.',
-    targetMarket: 'Pode ser vendido com garantia estendida e alto ticket médio.'
-  },
   'DNA': {
     label: 'DNA (Verizon Grade A Testado)',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
@@ -109,54 +97,6 @@ export const GRADE_EXPLANATIONS: Record<GradeType, {
     targetMarket: 'Ideal para recondicionamento e margem agressiva.'
   },
   'DND': {
-    label: 'DND (Verizon Grade D Testado)',
-    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-    borderColor: 'border-rose-500/50',
-    textColor: 'text-rose-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless DND. Aparelho funcional com desgaste estético pesado.',
-    screenDesc: 'Arranhões profundos ou desgaste na tela.',
-    housingDesc: 'Desgaste estético severo.',
-    batteryMin: '75% a 85% de capacidade original',
-    functionality: 'Funcional, para técnicos ou recondicionamento completo.',
-    targetMarket: 'Menor custo de entrada por unidade.'
-  },
-  'A(T) DNA': {
-    label: 'DNA (Verizon Grade A Testado)',
-    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-    borderColor: 'border-emerald-500/50',
-    textColor: 'text-emerald-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless DNA. Totalmente testado, cosmética excelente com laudo de carrier.',
-    screenDesc: 'Tela original sem trincos nem quebras. Teste de toque e display 100% aprovados.',
-    housingDesc: 'Carcaça com micro-marcas mínimas de devolução de operadora americana.',
-    batteryMin: '86% a 100% de capacidade original',
-    functionality: '100% funcional no padrão Verizon, Clean ESN e sem bloqueio de ativação.',
-    targetMarket: 'Máxima valorização e segurança para lojistas e importadores.'
-  },
-  'B(T) DNB': {
-    label: 'DNB (Verizon Grade B Testado)',
-    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-    borderColor: 'border-amber-500/50',
-    textColor: 'text-amber-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless DNB. Totalmente testado com marcas normais de uso.',
-    screenDesc: 'Tela original funcional, micro-arranhões superficiais sem trincos.',
-    housingDesc: 'Pequenos riscos ou descoloração leve nas quinas ou aro.',
-    batteryMin: '82% a 92% de capacidade original',
-    functionality: 'Diagnóstico Verizon aprovado. Clean ESN garantido.',
-    targetMarket: 'Excelente giro rápido de estoque com preço atrativo.'
-  },
-  'C(T) DNC': {
-    label: 'DNC (Verizon Grade C Testado)',
-    badgeColor: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
-    borderColor: 'border-orange-500/50',
-    textColor: 'text-orange-300',
-    shortDesc: 'Padrão Oficial Verizon Wireless DNC. Totalmente funcional com marcas estéticas evidentes.',
-    screenDesc: 'Tela com arranhões mais visíveis, sem quebra, touch 100% operacional.',
-    housingDesc: 'Marcas de atrito ou desgaste na carcaça.',
-    batteryMin: '80% a 88% de capacidade original',
-    functionality: 'Placa e conectores operacionais, pronto para película ou venda econômica.',
-    targetMarket: 'Ideal para recondicionamento e margem agressiva.'
-  },
-  'D(T) DND': {
     label: 'DND (Verizon Grade D Testado)',
     badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     borderColor: 'border-rose-500/50',
@@ -370,10 +310,10 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
   {
     id: 'lot-us-cpo-05',
     lotNumber: 'US-99120-COL',
-    title: 'Lote 8x iPhone 15 Pro Max 256GB - CPO Apple Certified Pre-Owned (Bateria 100%)',
+    title: 'Lote 8x iPhone 15 Pro Max 256GB - Grade A+ Apple Certified (Bateria 100%)',
     modelFamily: 'iPhone 15 Pro Max',
     quantity: 8,
-    grade: 'CPO Refurbished',
+    grade: 'Grade A+',
     primaryStorage: '256GB',
     colorHighlights: ['Natural Titanium', 'Blue Titanium', 'White Titanium'],
     batteryHealthRange: '100% (Novas Originais)',
@@ -406,7 +346,7 @@ export const INITIAL_AUCTIONS: AuctionLot[] = [
       model: 'iPhone 15 Pro Max',
       storage: '256GB',
       color: idx % 2 === 0 ? 'Natural Titanium' : 'Blue Titanium',
-      grade: 'CPO Refurbished',
+      grade: 'Grade A+',
       batteryHealth: 100,
       imeiMasked: `358991******${String(200 + idx * 11).slice(-3)}`,
       carrierStatus: 'Factory Unlocked',

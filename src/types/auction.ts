@@ -1,4 +1,4 @@
-export type GradeType = 'Grade A+' | 'Grade A' | 'Grade B' | 'Grade C' | 'CPO Refurbished' | 'DNA' | 'DNB' | 'DNC' | 'DND' | 'A(T) DNA' | 'B(T) DNB' | 'C(T) DNC' | 'D(T) DND' | string;
+export type GradeType = 'Grade A+' | 'Grade A' | 'Grade B' | 'Grade C' | 'DNA' | 'DNB' | 'DNC' | 'DND' | string;
 
 export interface DeviceItem {
   id: string;
