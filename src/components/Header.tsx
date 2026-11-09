@@ -62,46 +62,42 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-[#0b0f17]/95 backdrop-blur-md border-b border-slate-800">
       {/* Top System Bar: EXPLICIT PROMINENT LINKS TO 'NOSSO SISTEMA DE LEILÕES' */}
-      <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/20 px-4 py-2 text-xs">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-slate-300">
-            <span className="inline-flex items-center gap-1.5 font-bold text-amber-400">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              USAFAST LEILÕES HUB
+      <div className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/20 px-2 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-1.5 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-slate-300">
+            <span className="inline-flex items-center gap-1 font-bold text-amber-400 text-[10px] sm:text-xs">
+              <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              USAFAST HUB
             </span>
             <span className="text-slate-600 hidden sm:inline">|</span>
-            <span className="text-slate-400 hidden md:inline">
-              Portal do Importador Brasil · Leilões Oficiais Assurant, Marketplaces USA, Macbooks & Verizon
-            </span>
-            <span className="text-slate-600 hidden lg:inline">|</span>
             <div 
               onClick={onRefreshPtax}
-              className="inline-flex items-center gap-1.5 font-mono text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2.5 py-0.5 rounded-full text-[11px] cursor-pointer hover:bg-emerald-900/60 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1 font-mono text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] cursor-pointer hover:bg-emerald-900/60 transition-colors shadow-sm"
               title={`${ptaxSource} ${ptaxLastUpdated ? `· Atualizado às ${ptaxLastUpdated}` : ''} (Clique para atualizar)`}
             >
-              <span className="relative flex h-2 w-2 shrink-0">
+              <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-emerald-500"></span>
               </span>
-              <span>Dólar Online (PTAX): 1 USD = R$ {usdRate.toFixed(2)}</span>
+              <span>PTAX: R$ {usdRate.toFixed(2)}</span>
             </div>
           </div>
 
           {/* TWO PROMINENT LINKS TO "NOSSO SISTEMA DE LEILÕES" */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {isClientAuthenticated ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   onClick={() => handleNavClick('cliente')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded font-bold text-xs transition-colors"
+                  className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded font-bold text-[10px] sm:text-xs transition-colors"
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <UserCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-400" />
                   <span>Olá, {clientName?.split(' ')[0] || 'Arrematante'}</span>
                 </button>
                 {onClientLogout && (
                   <button
                     onClick={onClientLogout}
-                    className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors px-1.5 py-0.5 rounded hover:bg-slate-800"
+                    className="text-[10px] sm:text-[11px] text-slate-400 hover:text-rose-400 transition-colors px-1 py-0.5 rounded hover:bg-slate-800"
                     title="Encerrar sessão do cliente"
                   >
                     Sair
@@ -111,22 +107,22 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={() => handleNavClick('cliente')}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded font-bold text-xs transition-colors shadow-sm"
+                className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded font-bold text-[10px] sm:text-xs transition-colors shadow-sm"
                 title="Acesse o Sistema de Lances e Arrematação de Leilões Americanos"
               >
-                <Gavel className="w-3.5 h-3.5 text-amber-400" />
-                <span>Acessar Sistema de Leilões</span>
+                <Gavel className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+                <span>Sistema de Leilões</span>
               </button>
             )}
 
             {!isClientAuthenticated && (
               <button
                 onClick={() => onOpenSystem('register')}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-xs transition-colors shadow-sm"
+                className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold text-[10px] sm:text-xs transition-colors shadow-sm"
                 title="Cadastrar Arrematante no Sistema Oficial de Leilões"
               >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Cadastrar no Sistema de Leilões</span>
+                <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span>Cadastrar</span>
               </button>
             )}
           </div>
@@ -134,21 +130,21 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Main Navigation Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-6">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-2 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-6 overflow-x-hidden">
         {/* Zone 1: Brand Wordmark */}
         <div 
           onClick={() => handleNavClick('home')}
-          className="flex items-center gap-3 shrink-0 cursor-pointer group"
+          className="flex items-center gap-2 sm:gap-3 shrink-0 cursor-pointer group"
         >
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-amber-500 via-amber-400 to-amber-300 flex items-center justify-center text-slate-950 font-black shadow-inner shadow-black/30 group-hover:scale-105 transition-transform">
-            <Gavel className="w-5 h-5 text-slate-950" />
+          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-tr from-amber-500 via-amber-400 to-amber-300 flex items-center justify-center text-slate-950 font-black shadow-inner shadow-black/30 group-hover:scale-105 transition-transform">
+            <Gavel className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950" />
           </div>
           <div>
-            <span className="text-lg font-black tracking-tight text-white whitespace-nowrap block group-hover:text-amber-300 transition-colors">
-              USAFAST LEILÕES HUB
+            <span className="text-xs sm:text-lg font-black tracking-tight text-white whitespace-nowrap block group-hover:text-amber-300 transition-colors">
+              USAFAST LEILÕES
             </span>
-            <span className="text-[11px] text-amber-400/90 font-semibold block -mt-0.5">
-              Leilões de Atacado & Varejo EUA
+            <span className="text-[9px] sm:text-[11px] text-amber-400/90 font-semibold block -mt-0.5">
+              Leilões EUA
             </span>
           </div>
         </div>
@@ -232,21 +228,21 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Language Selector, Currency Switch & Quick Bids Action */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* Language Selector Dropdown */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setLangMenuOpen(!langMenuOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-100 border border-slate-700 rounded-md text-xs font-semibold transition-colors"
+              className="flex items-center gap-1 px-1.5 py-1 sm:px-2.5 sm:py-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-100 border border-slate-700 rounded-md text-[10px] sm:text-xs font-semibold transition-colors"
               title="Selecionar Idioma / Select Language / Seleccionar Idioma"
             >
-              <Globe className="w-3.5 h-3.5 text-amber-400" />
+              <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
               <span>{language === 'pt' ? '🇧🇷 PT' : language === 'es' ? '🇪🇸 ES' : '🇺🇸 EN'}</span>
             </button>
 
             {langMenuOpen && (
-              <div className="absolute right-0 mt-1 w-36 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 text-xs font-semibold">
+              <div className="absolute right-0 mt-1 w-32 sm:w-36 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => {
@@ -283,27 +279,27 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onToggleCurrency}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-md text-xs font-mono transition-colors"
+            className="flex items-center gap-1 px-1.5 py-1 sm:px-2.5 sm:py-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-md text-[10px] sm:text-xs font-mono transition-colors"
             title="Alternar moeda entre USD e BRL"
           >
-            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold">{currency === 'USD' ? 'USD ($)' : 'BRL (R$)'}</span>
+            <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+            <span className="font-semibold">{currency === 'USD' ? '$' : 'R$'}</span>
           </button>
 
           <button
             onClick={() => handleNavClick('cliente')}
-            className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap shadow-sm shadow-amber-500/10"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap shadow-sm shadow-amber-500/10"
           >
-            <Gavel className="w-4 h-4" />
+            <Gavel className="w-3.5 h-3.5" />
             <span>{t.placeBids}</span>
           </button>
 
           {/* Mobile hamburger menu toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 lg:hidden text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+            className="p-1 lg:hidden text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
           >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>

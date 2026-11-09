@@ -212,6 +212,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     location: ''
   });
 
+  // Helper: clean "Lote", "Lote Master", "5x", "10x" prefixes from model titles
+  const cleanLotTitle = (rawTitle: string): string => {
+    if (!rawTitle) return '';
+    return String(rawTitle)
+      .replace(/^Lote\s+Master\s+\d+x\s*/gi, '')
+      .replace(/^Lote\s+Master\s*/gi, '')
+      .replace(/^Lote\s+\d+x\s*/gi, '')
+      .replace(/^Lote\s*/gi, '')
+      .replace(/^\d+x\s*/gi, '')
+      .replace(/^Master\s+\d+x\s*/gi, '')
+      .trim();
+  };
+
   // Helper: map grade from CSV to GradeType (Standard / Generic auctions)
   const mapGrade = (raw: string): GradeType => {
     const g = String(raw || '').toUpperCase();
@@ -227,16 +240,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   // "tire o grade B+(T), A+(T), C+(T) nao deixe aparecer altere tudo para DNA, DNB, DNC , DND isso só no verizon"
   const mapVerizonGrade = (raw: string): GradeType => {
     const g = String(raw || '').trim().toUpperCase();
-    if (g.includes('DND') || g.includes('D(T)') || g.includes('D+(T)') || (g.includes('D') && !g.includes('DNA') && !g.includes('DNB') && !g.includes('DNC'))) {
+    if (g.includes('DND') || g.includes('D(T)') || g.includes('D+(T)') || g.includes('GRADE D') || (g.includes('D') && !g.includes('DNA') && !g.includes('DNB') && !g.includes('DNC'))) {
       return 'DND';
     }
-    if (g.includes('DNC') || g.includes('C(T)') || g.includes('C+(T)') || g.includes('C+') || g.includes('C')) {
+    if (g.includes('DNC') || g.includes('C(T)') || g.includes('C+(T)') || g.includes('GRADE C') || g.includes('C+') || (g.includes('C') && !g.includes('DNA') && !g.includes('DNB'))) {
       return 'DNC';
     }
-    if (g.includes('DNB') || g.includes('B(T)') || g.includes('B+(T)') || g.includes('B+') || g.includes('B') || g.includes('A/B')) {
+    if (g.includes('DNB') || g.includes('B(T)') || g.includes('B+(T)') || g.includes('GRADE B') || g.includes('B+') || g.includes('B') || g.includes('A/B')) {
       return 'DNB';
     }
-    if (g.includes('DNA') || g.includes('A(T)') || g.includes('A+(T)') || g.includes('A+') || g.includes('A')) {
+    if (g.includes('DNA') || g.includes('A(T)') || g.includes('A+(T)') || g.includes('GRADE A') || g.includes('A+') || g.includes('A') || g.includes('MINT') || g.includes('NEW')) {
       return 'DNA';
     }
     return 'DNC';
@@ -298,14 +311,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }>();
 
     rawRows.forEach((r, idx) => {
-      const lotNum = String(r['Lot #'] || r['Lot#'] || r['Lot'] || r['lotNumber'] || '').trim();
+      const lotNum = String(r['Lot #'] || r['Lot#'] || r['Lot'] || r['lotNumber'] || r['Item #'] || r['Item'] || r['ID'] || `VZ-${idx + 1}`).trim();
       if (!lotNum) return;
 
       if (!groups.has(lotNum)) {
         groups.set(lotNum, {
           lotNumber: lotNum,
-          title: String(r['Title'] || r['title'] || `Lote ${lotNum}`).trim(),
-          oem: String(r['OEM'] || r['oem'] || 'Samsung').trim(),
+          title: cleanLotTitle(String(r['Title'] || r['title'] || `iPhone ${lotNum}`)),
+          oem: String(r['OEM'] || r['oem'] || 'Apple').trim(),
           primaryModel: String(r['Model'] || r['model'] || 'Smartphone').trim(),
           gradeRaw: String(r['Grade'] || r['grade'] || 'C(T)').trim(),
           endDate: r['End Date'] || r['endDate'],
@@ -327,14 +340,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       const model = String(r['Model'] || r['model'] || g.primaryModel).trim();
       const cap = String(r['Capacity'] || r['capacity'] || '128GB').trim();
       const color = String(r['Color'] || r['color'] || 'Black').trim();
-      const source = String(r['Inventory Source'] || r['inventorySource'] || 'Carrier Return').trim();
+      const source = String(r['Inventory Source'] || r['inventorySource'] || 'Verizon Direct Return').trim();
 
       if (model) g.models.add(model);
       if (cap) g.capacities.add(cap);
       if (color) g.colors.add(color);
       if (source) g.sources.add(source);
 
-      // Transform grade ONLY for Verizon: A(T) -> A(T) DNA, B(T) -> B(T) DNB, C(T) -> C(T) DNC, etc.
+      // Transform grade ONLY for Verizon: A(T) -> DNA, B(T) -> DNB, C(T) -> DNC, etc.
       const mappedG = mapVerizonGrade(r['Grade'] || g.gradeRaw);
 
       g.items.push({
@@ -347,8 +360,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         imeiMasked: `359820******${String(100 + (idx * 17) % 899)}`,
         carrierStatus: 'Verizon Clean / Unlocked',
         icloudStatus: 'Clean / FMI OFF',
-        screenCondition: 'Conforme Grade Verizon DNA',
-        housingCondition: 'Conforme Grade Verizon DNA',
+        screenCondition: `Conforme Grade Verizon ${mappedG}`,
+        housingCondition: `Conforme Grade Verizon ${mappedG}`,
         partNumber: String(r['Part #'] || r['partNumber'] || '').trim(),
         inventorySource: source,
         itemDescription: String(r['Item Description'] || r['itemDescription'] || '').trim(),
@@ -357,11 +370,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
 
     const parsedGroupedLots: VerizonGroupedLot[] = Array.from(groups.values()).map(g => {
-      // Transform grade ONLY for Verizon to DNA, DNB, DNC, DND (never A+(T), B+(T), C+(T))
+      // Transform grade ONLY for Verizon to DNA, DNB, DNC, DND
       const mappedGrade = mapVerizonGrade(g.gradeRaw);
 
-      // Clean title for Verizon to never show B+(T), A+(T), C+(T)
-      const cleanTitle = g.title
+      // Clean title for Verizon to strip Lote, 5x, and map grades to DNA, DNB, DNC, DND
+      const cleanTitle = cleanLotTitle(g.title)
         .replace(/\bA\+\(T\)\b/gi, 'DNA')
         .replace(/\bB\+\(T\)\b/gi, 'DNB')
         .replace(/\bC\+\(T\)\b/gi, 'DNC')
@@ -373,7 +386,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         .replace(/\bA\(T\)\b/gi, 'DNA')
         .replace(/\bB\(T\)\b/gi, 'DNB')
         .replace(/\bC\(T\)\b/gi, 'DNC')
-        .replace(/\bD\(T\)\b/gi, 'DND');
+        .replace(/\bD\(T\)\b/gi, 'DND')
+        .replace(/Grade\s+A\+/gi, 'Grade DNA')
+        .replace(/Grade\s+A/gi, 'Grade DNA')
+        .replace(/Grade\s+B\+/gi, 'Grade DNB')
+        .replace(/Grade\s+B/gi, 'Grade DNB')
+        .replace(/Grade\s+C\+/gi, 'Grade DNC')
+        .replace(/Grade\s+C/gi, 'Grade DNC')
+        .replace(/Grade\s+D\+/gi, 'Grade DND')
+        .replace(/Grade\s+D/gi, 'Grade DND');
 
       const isPremium = /fold|ultra|pro max/i.test(g.primaryModel);
       const isBudget = /a1|a2|a0/i.test(g.primaryModel);
@@ -1436,11 +1457,11 @@ $285.00
         newLots = stockAppleGroupedLots.map((g, idx) => ({
           id: `${meta.prefix.toLowerCase()}-lot-grp-${Date.now()}-${idx}`,
           lotNumber: `${meta.prefix}-${g.lotNumber.replace(/^(UF-|ASR-)/, '')}`,
-          title: g.title,
-          modelFamily: g.modelFamily,
+          title: cleanLotTitle(g.title),
+          modelFamily: cleanLotTitle(g.modelFamily) || g.modelFamily,
           oemBrand: 'Apple',
           quantity: g.totalQuantity,
-          grade: g.grade,
+          grade: g.grade as GradeType,
           primaryStorage: g.capacity,
           colorHighlights: g.colorHighlights.length > 0 ? g.colorHighlights : ['Prata', 'Preto Espacial'],
           batteryHealthRange: '88% - 100% (Verificado Apple)',
@@ -1453,7 +1474,9 @@ $285.00
           reservePriceMet: true,
           estimatedBrazilRetailBrl: g.calculatedRetailBrl,
           totalBidsCount: Math.floor(Math.random() * 12) + 2,
-          endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+          endTime: presetFormat === 'ASSURANT'
+            ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
+            : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
           imageUrl: g.imageUrl,
           galleryImages: [
             g.imageUrl,
@@ -1489,17 +1512,18 @@ $285.00
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
           const imageUrl = getDeviceImageUrl(it.make, it.model, it.deviceType);
+          const cleanModel = cleanLotTitle(it.model);
+          const rawItemTitle = `${it.make || 'Apple'} ${cleanModel} ${it.capacity} ${it.color} - Grade ${it.grade}`;
+          const finalItemTitle = cleanLotTitle(rawItemTitle);
 
           return {
             id: `${meta.prefix.toLowerCase()}-lot-ind-${Date.now()}-${idx}`,
             lotNumber: `${meta.prefix}-${it.itemNumber}`,
-            title: presetFormat !== 'STOCK_APPLE'
-              ? `Lote ${it.availableQuantity}x ${it.make || 'Apple'} ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`
-              : `Lote ${it.availableQuantity}x Apple ${it.model} ${it.capacity} ${it.color} - Grade ${it.grade} (Desbloqueado)`,
-            modelFamily: it.model,
+            title: finalItemTitle,
+            modelFamily: cleanModel || it.model,
             oemBrand: presetFormat !== 'STOCK_APPLE' ? (it.make || 'Apple') : 'Apple',
             quantity: it.availableQuantity,
-            grade: it.grade,
+            grade: it.grade as GradeType,
             primaryStorage: it.capacity,
             colorHighlights: [it.color],
             batteryHealthRange: '88% - 100% (Verificado)',
@@ -1512,7 +1536,9 @@ $285.00
             reservePriceMet: true,
             estimatedBrazilRetailBrl,
             totalBidsCount: Math.floor(Math.random() * 8) + 1,
-            endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+            endTime: presetFormat === 'ASSURANT'
+              ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
+              : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
             imageUrl,
             galleryImages: [
               imageUrl,
@@ -1561,7 +1587,7 @@ $285.00
       }
 
       const targetSourceType = isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE';
-      const finalLots = replaceExistingLots
+      const finalLots = (presetFormat === 'ASSURANT' || replaceExistingLots)
         ? [...newLots, ...auctions.filter(a => a.sourceType !== targetSourceType)]
         : [...newLots, ...auctions];
 
