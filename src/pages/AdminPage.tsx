@@ -2431,11 +2431,15 @@ $285.00
 
 
   // ----------------------------------------------------
-  // GESTÃO DE LOTES (EDIÇÃO RÁPIDA & EXCLUSÃO)
+  // GESTÃO DE LOTES (EDIÇÃO RÁPIDA, BUSCA & PAGINAÇÃO ULTRA-RÁPIDA)
   // ----------------------------------------------------
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [editPriceUsd, setEditPriceUsd] = useState<number>(0);
   const [editGrade, setEditGrade] = useState<GradeType>('Grade A');
+  const [adminLotSearch, setAdminLotSearch] = useState('');
+  const [adminLotPage, setAdminLotPage] = useState(1);
+  const [verizonPreviewPage, setVerizonPreviewPage] = useState(1);
+  const ADMIN_LOTS_PER_PAGE = 25;
 
   const handleStartEdit = (lot: AuctionLot) => {
     setEditingLotId(lot.id);
@@ -4304,175 +4308,259 @@ $285.00
       )}
 
       {/* ======================================================== */}
-      {/* TAB 2: GERENCIAR LEILÕES (EDIÇÃO & STATUS) */}
+      {/* TAB 2: GERENCIAR LEILÕES (EDIÇÃO, BUSCA & PAGINAÇÃO ULTRA-RÁPIDA) */}
       {/* ======================================================== */}
-      {adminTab === 'lots' && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento</h2>
-              <p className="text-xs text-slate-400">Edite lances atuais, altere grades ou remova lotes encerrados</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const blob = new Blob([JSON.stringify(auctions)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'catalogo_leiloes_usafast.json';
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  showNotice('Catálogo exportado! Abra esse arquivo no celular em "Importar Catálogo (.json)".', 'success');
-                }}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Exportar Catálogo (.json)</span>
-              </button>
-              <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer">
-                <Upload className="w-3.5 h-3.5" />
-                <span>Importar Catálogo (.json)</span>
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const r = new FileReader();
-                    r.onload = (ev) => {
-                      try {
-                        const parsed = JSON.parse(String(ev.target?.result || '[]'));
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                          onUpdateAuctions(parsed);
-                          showNotice(`🎉 ${parsed.length} lotes sincronizados com sucesso!`, 'success');
-                        }
-                      } catch (err) {
-                        showNotice('Arquivo JSON inválido.', 'error');
-                      }
-                    };
-                    r.readAsText(f);
-                  }}
-                />
-              </label>
-              <button
-                onClick={() => setAdminTab('upload')}
-                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Importar Mais Lotes (Excel)</span>
-              </button>
-            </div>
-          </div>
+      {adminTab === 'lots' && (() => {
+        const filteredAdminLots = auctions.filter(lot => {
+          if (!adminLotSearch.trim()) return true;
+          const q = adminLotSearch.toLowerCase();
+          return (
+            lot.title.toLowerCase().includes(q) ||
+            lot.lotNumber.toLowerCase().includes(q) ||
+            lot.modelFamily.toLowerCase().includes(q) ||
+            lot.location.toLowerCase().includes(q) ||
+            (lot.auctionHouse || '').toLowerCase().includes(q)
+          );
+        });
 
-          <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
-                  <th className="py-3 px-3">Lote</th>
-                  <th className="py-3 px-3">Título</th>
-                  <th className="py-3 px-3">Qtd</th>
-                  <th className="py-3 px-3">Grade</th>
-                  <th className="py-3 px-3">Lance Atual (USD)</th>
-                  <th className="py-3 px-3">Revenda Brasil</th>
-                  <th className="py-3 px-3">Origem</th>
-                  <th className="py-3 px-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {auctions.map(lot => {
-                  const isEditing = editingLotId === lot.id;
-                  return (
-                    <tr key={lot.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-3 font-mono font-bold text-amber-400">{lot.lotNumber}</td>
-                      <td className="py-3 px-3">
-                        <span className="font-semibold text-white block truncate max-w-[240px]">{lot.title}</span>
-                        <span className="text-[10px] text-slate-400">{lot.modelFamily} · {lot.primaryStorage}</span>
-                      </td>
-                      <td className="py-3 px-3 font-mono">{lot.quantity} un</td>
-                      <td className="py-3 px-3">
-                        {isEditing ? (
-                          <select
-                            value={editGrade}
-                            onChange={e => setEditGrade(e.target.value as GradeType)}
-                            className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
-                          >
-                            <option value="Grade A+">Grade A+</option>
-                            <option value="Grade A">Grade A</option>
-                            <option value="Grade B">Grade B</option>
-                            <option value="Grade C">Grade C</option>
-                          </select>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 border border-slate-700">
-                            {lot.grade}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            value={editPriceUsd}
-                            onChange={e => setEditPriceUsd(Number(e.target.value))}
-                            className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 font-mono text-emerald-400"
-                          />
-                        ) : (
-                          <span className="font-mono font-bold text-emerald-400">
-                            ${lot.currentBidUsd.toLocaleString()} USD
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 font-mono text-slate-300">
-                        R$ {lot.estimatedBrazilRetailBrl.toLocaleString('pt-BR')}
-                      </td>
-                      <td className="py-3 px-3 text-slate-400 truncate max-w-[120px]">
-                        {lot.location}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleSaveEdit(lot.id)}
-                              className="px-2.5 py-1 bg-emerald-500 text-slate-950 font-bold rounded text-[11px]"
+        const totalPages = Math.ceil(filteredAdminLots.length / ADMIN_LOTS_PER_PAGE) || 1;
+        const currentPage = Math.min(adminLotPage, totalPages);
+        const startIndex = (currentPage - 1) * ADMIN_LOTS_PER_PAGE;
+        const paginatedAdminLots = filteredAdminLots.slice(startIndex, startIndex + ADMIN_LOTS_PER_PAGE);
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento ({auctions.length} Lotes)</h2>
+                <p className="text-xs text-slate-400">Edite lances atuais, altere grades ou remova lotes encerrados com navegação rápida</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob([JSON.stringify(auctions)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'catalogo_leiloes_usafast.json';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showNotice('Catálogo exportado! Abra esse arquivo no celular em "Importar Catálogo (.json)".', 'success');
+                  }}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Exportar Catálogo (.json)</span>
+                </button>
+                <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Importar Catálogo (.json)</span>
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const r = new FileReader();
+                      r.onload = (ev) => {
+                        try {
+                          const parsed = JSON.parse(String(ev.target?.result || '[]'));
+                          if (Array.isArray(parsed) && parsed.length > 0) {
+                            onUpdateAuctions(parsed);
+                            showNotice(`🎉 ${parsed.length} lotes sincronizados com sucesso!`, 'success');
+                          }
+                        } catch (err) {
+                          showNotice('Arquivo JSON inválido.', 'error');
+                        }
+                      };
+                      r.readAsText(f);
+                    }}
+                  />
+                </label>
+                <button
+                  onClick={() => setAdminTab('upload')}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Importar Mais Lotes (Excel)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Search Bar for Admin Lots */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={adminLotSearch}
+                  onChange={e => {
+                    setAdminLotSearch(e.target.value);
+                    setAdminLotPage(1);
+                  }}
+                  placeholder="Filtrar por lote (#VZ-01), modelo (iPhone 16), título ou leilão..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {/* Admin Pagination Controls */}
+              <div className="flex items-center gap-2 text-xs font-semibold shrink-0">
+                <span className="text-slate-400">
+                  {filteredAdminLots.length} lotes ({currentPage}/{totalPages})
+                </span>
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setAdminLotPage(p => Math.max(1, p - 1))}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setAdminLotPage(p => Math.min(totalPages, p + 1))}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
+                    <th className="py-3 px-3">Lote</th>
+                    <th className="py-3 px-3">Título</th>
+                    <th className="py-3 px-3">Qtd</th>
+                    <th className="py-3 px-3">Grade</th>
+                    <th className="py-3 px-3">Lance Atual (USD)</th>
+                    <th className="py-3 px-3">Revenda Brasil</th>
+                    <th className="py-3 px-3">Origem</th>
+                    <th className="py-3 px-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {paginatedAdminLots.map(lot => {
+                    const isEditing = editingLotId === lot.id;
+                    return (
+                      <tr key={lot.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3 px-3 font-mono font-bold text-amber-400">{lot.lotNumber}</td>
+                        <td className="py-3 px-3">
+                          <span className="font-semibold text-white block truncate max-w-[240px]">{lot.title}</span>
+                          <span className="text-[10px] text-slate-400">{lot.modelFamily} · {lot.primaryStorage}</span>
+                        </td>
+                        <td className="py-3 px-3 font-mono">{lot.quantity} un</td>
+                        <td className="py-3 px-3">
+                          {isEditing ? (
+                            <select
+                              value={editGrade}
+                              onChange={e => setEditGrade(e.target.value as GradeType)}
+                              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
                             >
-                              Salvar
-                            </button>
-                            <button
-                              onClick={() => setEditingLotId(null)}
-                              className="px-2 py-1 bg-slate-800 text-slate-300 rounded text-[11px]"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleStartEdit(lot)}
-                              className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-colors"
-                              title="Editar preço e grade"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteLot(lot.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
-                              title="Excluir lote"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              <option value="Grade A+">Grade A+</option>
+                              <option value="Grade A">Grade A</option>
+                              <option value="Grade B">Grade B</option>
+                              <option value="Grade C">Grade C</option>
+                              <option value="DNA">DNA</option>
+                              <option value="DNB">DNB</option>
+                              <option value="DNC">DNC</option>
+                              <option value="DND">DND</option>
+                            </select>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 border border-slate-700">
+                              {lot.grade}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              value={editPriceUsd}
+                              onChange={e => setEditPriceUsd(Number(e.target.value))}
+                              className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 font-mono text-emerald-400"
+                            />
+                          ) : (
+                            <span className="font-mono font-bold text-emerald-400">
+                              ${lot.currentBidUsd.toLocaleString()} USD
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-300">
+                          R$ {lot.estimatedBrazilRetailBrl.toLocaleString('pt-BR')}
+                        </td>
+                        <td className="py-3 px-3 text-slate-400 truncate max-w-[120px]">
+                          {lot.location}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {isEditing ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleSaveEdit(lot.id)}
+                                className="px-2.5 py-1 bg-emerald-500 text-slate-950 font-bold rounded text-[11px]"
+                              >
+                                Salvar
+                              </button>
+                              <button
+                                onClick={() => setEditingLotId(null)}
+                                className="px-2 py-1 bg-slate-800 text-slate-300 rounded text-[11px]"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleStartEdit(lot)}
+                                className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-colors"
+                                title="Editar preço e grade"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteLot(lot.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
+                                title="Excluir lote"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
+                <span>Exibindo <strong>{startIndex + 1}</strong> a <strong>{Math.min(startIndex + ADMIN_LOTS_PER_PAGE, filteredAdminLots.length)}</strong> de <strong>{filteredAdminLots.length}</strong> lotes no catálogo</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setAdminLotPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-lg"
+                  >
+                    Anterior
+                  </button>
+                  <span className="px-2 font-mono text-amber-400 font-bold">{currentPage} / {totalPages}</span>
+                  <button
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setAdminLotPage(p => Math.min(totalPages, p + 1))}
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-lg"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ======================================================== */}
       {/* TAB 3: OFERTAS COMPUTADAS (OFFERS CONSOLE) */}

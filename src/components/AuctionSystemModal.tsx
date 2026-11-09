@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Gavel, UserCheck, Shield, MapPin, CheckCircle2, AlertTriangle, ArrowRight, DollarSign, Clock, RefreshCw, Send, Lock } from 'lucide-react';
 import { AuctionLot, SystemUser } from '../types/auction';
+import { isAssurantLot, getAssurantPreviousApprovedBid } from '../utils/assurantUtils';
 
 interface AuctionSystemModalProps {
   isOpen: boolean;
@@ -246,10 +247,17 @@ export const AuctionSystemModal: React.FC<AuctionSystemModalProps> = ({
                           <span className="text-slate-400">Lance Atual no Leilão:</span>
                           <span className="font-mono font-bold text-white">${currentSelectedLot.currentBidUsd.toLocaleString()} USD</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Lance Mínimo Aceito:</span>
-                          <span className="font-mono font-semibold text-amber-400">${minRequiredBid.toLocaleString()} USD</span>
-                        </div>
+                        {isAssurantLot(currentSelectedLot) ? (
+                          <div className="flex justify-between items-center font-medium">
+                            <span className="text-blue-300">Média lance aprovado arremate anterior:</span>
+                            <span className="font-mono font-bold text-blue-300">${getAssurantPreviousApprovedBid(currentSelectedLot).toLocaleString()} USD</span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Lance Mínimo Aceito:</span>
+                            <span className="font-mono font-semibold text-amber-400">${minRequiredBid.toLocaleString()} USD</span>
+                          </div>
+                        )}
                         <div className="flex justify-between">
                           <span className="text-slate-400">Grade & Aparelhos:</span>
                           <span className="text-slate-200">{currentSelectedLot.grade} · {currentSelectedLot.quantity} unidade(s)</span>

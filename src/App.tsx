@@ -259,14 +259,34 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (!hasLocalUpdateRef.current && data && Array.isArray(data.auctions) && data.auctions.length > 0) {
-          console.log(`[App.tsx] Loaded ${data.auctions.length} lots from backend /api/auctions`);
-          setAuctions(data.auctions);
+          const backendLots: AuctionLot[] = data.auctions;
+          let localLots: AuctionLot[] = [];
           try {
-            localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(data.auctions));
+            const saved = localStorage.getItem('us_iphone_auctions_v1');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) localLots = parsed;
+            }
           } catch (e) {}
+
+          if (localLots.length > backendLots.length) {
+            console.log(`[App.tsx] Preserving ${localLots.length} imported lots from localStorage (backend had ${backendLots.length}). Syncing to server...`);
+            setAuctions(localLots);
+            fetch('/api/auctions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ auctions: localLots })
+            }).catch(() => {});
+          } else {
+            console.log(`[App.tsx] Loaded ${backendLots.length} lots from backend /api/auctions`);
+            setAuctions(backendLots);
+            try {
+              localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(backendLots));
+            } catch (e) {}
+          }
         }
       })
-      .catch(err => console.warn('[App.tsx] Initial fetch from /api/auctions failed:', err));
+      .catch(err => console.warn('[App.tsx] Initial fetch from /api/auctions failed (using local storage):', err));
   }, []);
 
   // Real-time live bidding polling effect (connects to PHP or simulated live pool)

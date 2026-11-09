@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Gavel, MapPin, Download, CheckCircle2, ShieldCheck, Battery, Smartphone, Award, Clock, ArrowRight, Share2, DollarSign } from 'lucide-react';
 import { AuctionLot } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
+import { isAssurantLot, getAssurantPreviousApprovedBid } from '../utils/assurantUtils';
 
 interface AuctionDetailModalProps {
   lot: AuctionLot | null;
@@ -293,6 +294,20 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
                     </span>
                   </div>
                 </div>
+
+                {isAssurantLot(lot) ? (
+                  <div className="p-2.5 bg-blue-950/40 border border-blue-500/30 rounded-lg text-xs flex items-center justify-between">
+                    <span className="text-blue-200 font-semibold">Média lance aprovado arremate anterior:</span>
+                    <span className="font-mono font-bold text-blue-300 text-sm">
+                      ${getAssurantPreviousApprovedBid(lot).toLocaleString()} USD <span className="text-[10px] text-slate-400 font-normal">/ un.</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between font-medium px-1">
+                    <span>Lance Mínimo Requerido:</span>
+                    <span className="text-amber-400 font-mono font-bold">${minBid.toLocaleString()} USD</span>
+                  </div>
+                )}
 
                 <form onSubmit={handleBidSubmit} className="pt-2 border-t border-slate-800/80 space-y-3">
                   <div className="flex items-center gap-2">

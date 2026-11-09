@@ -31,13 +31,18 @@ const AuctionCardComponent: React.FC<AuctionCardProps> = ({
     const calculateTime = () => {
       const difference = new Date(lot.endTime).getTime() - Date.now();
       if (difference <= 0) {
-        setTimeLeft({ hours: 0, minutes: 0, seconds: 0, isExpired: true });
+        setTimeLeft(prev => prev.isExpired ? prev : { hours: 0, minutes: 0, seconds: 0, isExpired: true });
         return;
       }
       const hours = Math.floor(difference / (1000 * 60 * 60));
       const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-      setTimeLeft({ hours, minutes, seconds, isExpired: false });
+      setTimeLeft(prev => {
+        if (prev.hours === hours && prev.minutes === minutes && prev.seconds === seconds && !prev.isExpired) {
+          return prev;
+        }
+        return { hours, minutes, seconds, isExpired: false };
+      });
     };
 
     calculateTime();

@@ -6,43 +6,78 @@ import { INITIAL_AUCTIONS } from './src/data/auctionsData';
 
 const STORE_PATH = path.join(process.cwd(), 'auctions_store.json');
 
+// In-Memory Fast Cache for Instant Zero-Latency Database Queries
+let cachedAuctions: any[] = [];
+
+// Initialize or Load Persistent Store on Startup
+try {
+  if (fs.existsSync(STORE_PATH)) {
+    const raw = fs.readFileSync(STORE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      cachedAuctions = parsed;
+      console.log(`[Database Engine] Loaded ${cachedAuctions.length} lots from persistent storage on startup.`);
+    } else {
+      cachedAuctions = INITIAL_AUCTIONS;
+      fs.writeFileSync(STORE_PATH, JSON.stringify(INITIAL_AUCTIONS, null, 2), 'utf-8');
+    }
+  } else {
+    cachedAuctions = INITIAL_AUCTIONS;
+    fs.writeFileSync(STORE_PATH, JSON.stringify(INITIAL_AUCTIONS, null, 2), 'utf-8');
+    console.log(`[Database Engine] Initialized auctions_store.json with ${INITIAL_AUCTIONS.length} initial lots.`);
+  }
+} catch (e) {
+  console.error('[Database Engine] Failed to load store, using default fallback:', e);
+  cachedAuctions = INITIAL_AUCTIONS;
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({ limit: '100mb' }));
 
-  // Initialize store file if missing
-  try {
-    if (!fs.existsSync(STORE_PATH)) {
-      fs.writeFileSync(STORE_PATH, JSON.stringify(INITIAL_AUCTIONS, null, 2), 'utf-8');
-      console.log(`[Server persistence] Created initial auctions_store.json with ${INITIAL_AUCTIONS.length} items`);
-    }
-  } catch (e) {
-    console.error('[Server persistence] Error initializing store file:', e);
-  }
-
-  app.get('/api/auctions', (_req, res) => {
+  // Instant In-Memory Search & Query Endpoint
+  app.get('/api/auctions', (req, res) => {
     try {
-      if (fs.existsSync(STORE_PATH)) {
-        const raw = fs.readFileSync(STORE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          console.log(`[API GET /api/auctions] Returning ${parsed.length} lots`);
-          return res.json({ auctions: parsed });
-        }
+      const q = String(req.query.search || '').trim().toLowerCase();
+      const source = String(req.query.source || '').trim().toUpperCase();
+
+      let results = cachedAuctions;
+
+      if (source && source !== 'ALL') {
+        results = results.filter(lot => 
+          (lot.sourceType || '').toUpperCase() === source ||
+          (lot.auctionHouse || '').toUpperCase().includes(source)
+        );
       }
-    } catch (e) {
-      console.error('[API GET /api/auctions] Error reading store:', e);
+
+      if (q) {
+        results = results.filter(lot =>
+          (lot.title || '').toLowerCase().includes(q) ||
+          (lot.lotNumber || '').toLowerCase().includes(q) ||
+          (lot.modelFamily || '').toLowerCase().includes(q) ||
+          (lot.location || '').toLowerCase().includes(q) ||
+          (lot.primaryStorage || '').toLowerCase().includes(q)
+        );
+      }
+
+      return res.json({ ok: true, count: results.length, total: cachedAuctions.length, auctions: results });
+    } catch (e: any) {
+      console.error('[API GET /api/auctions] Error:', e);
+      return res.json({ ok: true, count: cachedAuctions.length, total: cachedAuctions.length, auctions: cachedAuctions });
     }
-    console.log(`[API GET /api/auctions] Returning default fallback (${INITIAL_AUCTIONS.length} lots)`);
-    return res.json({ auctions: INITIAL_AUCTIONS });
   });
 
+  // Fast In-Memory Save & Persistent Store Update Endpoint
   app.post('/api/auctions', (req, res) => {
     try {
       const { auctions } = req.body || {};
-      if (Array.isArray(auctions)) {
-        fs.writeFileSync(STORE_PATH, JSON.stringify(auctions, null, 2), 'utf-8');
-        console.log(`[API POST /api/auctions] Successfully saved ${auctions.length} lots to auctions_store.json`);
+      if (Array.isArray(auctions) && auctions.length > 0) {
+        cachedAuctions = auctions;
+        // Asynchronous non-blocking disk persistence
+        fs.writeFile(STORE_PATH, JSON.stringify(auctions, null, 2), 'utf-8', (err) => {
+          if (err) console.error('[Database Engine] Non-blocking file save error:', err);
+          else console.log(`[Database Engine] Persisted ${auctions.length} lots to auctions_store.json`);
+        });
         return res.json({ ok: true, count: auctions.length });
       }
       return res.status(400).json({ ok: false, error: 'Invalid auctions array' });

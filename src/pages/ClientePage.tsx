@@ -26,6 +26,7 @@ import {
 import { AuctionLot, GradeType, SystemUser } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
 import { downloadOfficialInvoicePdf } from '../utils/generatePdfInvoice';
+import { isAssurantLot, getAssurantPreviousApprovedBid } from '../utils/assurantUtils';
 
 interface ClientePageProps {
   currentUser: SystemUser;
@@ -67,6 +68,12 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   const [selectedAuctionSystemFilter, setSelectedAuctionSystemFilter] = useState<'all' | 'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS'>('all');
   const [selectedLotTypeFilter, setSelectedLotTypeFilter] = useState<string>('all');
   const [clientSearch, setClientSearch] = useState('');
+  const [clientPage, setClientPage] = useState<number>(1);
+  const CLIENT_ITEMS_PER_PAGE = 15;
+
+  React.useEffect(() => {
+    setClientPage(1);
+  }, [clientSearch, selectedModelFilter, selectedGradeFilter, selectedCategoryFilter, selectedCapacityFilter, selectedAuctionHouseFilter, selectedAuctionSystemFilter, selectedLotTypeFilter]);
 
   // WhatsApp notification preferences
   const [whatsappNumber, setWhatsappNumber] = useState<string>(currentUser.whatsapp || currentUser.phone || '');
@@ -181,6 +188,11 @@ export const ClientePage: React.FC<ClientePageProps> = ({
     if (selectedLotTypeFilter === 'single' && lot.quantity > 1) return false;
     return true;
   });
+
+  const totalClientPages = Math.ceil(clientFilteredLots.length / CLIENT_ITEMS_PER_PAGE) || 1;
+  const currentClientPage = Math.min(clientPage, totalClientPages);
+  const clientStartIndex = (currentClientPage - 1) * CLIENT_ITEMS_PER_PAGE;
+  const paginatedClientLots = clientFilteredLots.slice(clientStartIndex, clientStartIndex + CLIENT_ITEMS_PER_PAGE);
 
   return (
     <div className="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-slate-200 space-y-8">
@@ -493,15 +505,17 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 Limpar Todos os Filtros
               </button>
             </div>
-          ) : viewMode === 'list' ? (
-            /* ======================================================== */
-            /* LIST VIEW: MODELOS, ESPECIFICAÇÕES E BOTÃO DE OFERTA     */
-            /* ======================================================== */
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-              {/* Mobile Card View (< md) */}
-              <div className="md:hidden divide-y divide-slate-800/80">
-                {clientFilteredLots.map(lot => {
-                  const currentBrl = lot.currentBidUsd * usdRate;
+          ) : (
+            <div className="space-y-6">
+              {viewMode === 'list' ? (
+                  /* ======================================================== */
+                  /* LIST VIEW: MODELOS, ESPECIFICAÇÕES E BOTÃO DE OFERTA     */
+                  /* ======================================================== */
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+                    {/* Mobile Card View (< md) */}
+                    <div className="md:hidden divide-y divide-slate-800/80">
+                      {paginatedClientLots.map(lot => {
+                        const currentBrl = lot.currentBidUsd * usdRate;
                   return (
                     <div key={lot.id} className="p-4 space-y-3">
                       <div className="flex items-start gap-3">
@@ -572,7 +586,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-sans">
-                    {clientFilteredLots.map(lot => {
+                    {paginatedClientLots.map(lot => {
                       const gradeInfo = GRADE_EXPLANATIONS[lot.grade];
                       const currentBrl = lot.currentBidUsd * usdRate;
                       const isVerizon = lot.sourceType === 'VERIZON' || lot.grade.includes('DNA') || lot.grade.includes('DNB') || lot.grade.includes('DNC');
@@ -726,7 +740,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
             /* CARDS VIEW: GRADE DE CARDS COM FOTOS GRANDES              */
             /* ======================================================== */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {clientFilteredLots.map(lot => {
+              {paginatedClientLots.map(lot => {
                 const gradeInfo = GRADE_EXPLANATIONS[lot.grade];
                 const currentBrl = lot.currentBidUsd * usdRate;
                 const grossProfitBrl = lot.estimatedBrazilRetailBrl - currentBrl;
@@ -873,6 +887,42 @@ export const ClientePage: React.FC<ClientePageProps> = ({
               })}
             </div>
           )}
+
+          {/* Client Pagination Footer */}
+          {totalClientPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-800 text-xs text-slate-400">
+              <div>
+                Exibindo <strong className="text-white">{clientStartIndex + 1}</strong> a <strong className="text-white">{Math.min(clientStartIndex + CLIENT_ITEMS_PER_PAGE, clientFilteredLots.length)}</strong> de <strong className="text-white">{clientFilteredLots.length}</strong> leilões
+              </div>
+
+              <div className="flex items-center gap-2 font-semibold">
+                <button
+                  disabled={currentClientPage === 1}
+                  onClick={() => {
+                    setClientPage(p => Math.max(1, p - 1));
+                    window.scrollTo({ top: 350, behavior: 'smooth' });
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-xl transition-colors"
+                >
+                  Anterior
+                </button>
+                <span className="font-mono text-amber-400 px-2 font-bold">{currentClientPage} / {totalClientPages}</span>
+                <button
+                  disabled={currentClientPage >= totalClientPages}
+                  onClick={() => {
+                    setClientPage(p => Math.min(totalClientPages, p + 1));
+                    window.scrollTo({ top: 350, behavior: 'smooth' });
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-xl transition-colors"
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )
+      }
         </div>
       )}
 
@@ -1365,10 +1415,19 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                 <span className="text-slate-400">Lance Atual no Leilão:</span>
                 <span className="font-mono font-bold text-white">${quickBidLot.currentBidUsd.toLocaleString()} USD</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Lance Mínimo Requerido:</span>
-                <span className="font-mono font-bold text-amber-400">${(quickBidLot.currentBidUsd + 25).toLocaleString()} USD</span>
-              </div>
+
+              {isAssurantLot(quickBidLot) ? (
+                <div className="flex justify-between items-center text-blue-300 font-medium">
+                  <span>Média lance aprovado arremate anterior:</span>
+                  <span className="font-mono font-bold">${getAssurantPreviousApprovedBid(quickBidLot).toLocaleString()} USD</span>
+                </div>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Lance Mínimo Requerido:</span>
+                  <span className="font-mono font-bold text-amber-400">${(quickBidLot.currentBidUsd + 25).toLocaleString()} USD</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
                 <span>Conversão PTAX:</span>
                 <span className="font-mono text-slate-300">R$ {((quickBidLot.currentBidUsd + 25) * usdRate).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
