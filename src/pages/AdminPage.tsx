@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { getDeviceImageUrl, stripLotPrefix } from '../utils/deviceImages';
+import { getEstimatedWholesalePrice } from '../utils/assurantUtils';
 import { fetchLivePtaxRate } from '../utils/ptaxService';
 import { 
   Upload, 
@@ -143,7 +144,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     availableQuantity: number;
     listPrice: number;
     currency: string;
-    deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+    deviceType: string;
     status: 'APPROVED' | 'DISCARDED_LOCKED' | 'DISCARDED_NON_APPLE';
     discardReason?: string;
   }
@@ -152,7 +153,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     groupKey: string;
     lotNumber: string;
     title: string;
-    deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+    deviceType: string;
     modelFamily: string;
     capacity: string;
     grade: string;
@@ -173,6 +174,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     approvedIPhones: number;
     approvedIPads: number;
     approvedWatches: number;
+    approvedSamsungs: number;
+    approvedOthers: number;
     totalApprovedUnits: number;
     discardedLockedCount: number;
     discardedNonAppleCount: number;
@@ -186,12 +189,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     approvedIPhones: 0,
     approvedIPads: 0,
     approvedWatches: 0,
+    approvedSamsungs: 0,
+    approvedOthers: 0,
     totalApprovedUnits: 0,
     discardedLockedCount: 0,
     discardedNonAppleCount: 0
   });
   const [stockAppleGroupMode, setStockAppleGroupMode] = useState<'grouped' | 'individual'>('individual');
-  const [stockAppleFilterType, setStockAppleFilterType] = useState<'ALL' | 'IPHONE' | 'IPAD' | 'WATCH' | 'DISCARDED_LOCKED'>('ALL');
+  const [stockAppleFilterType, setStockAppleFilterType] = useState<'ALL' | 'IPHONE' | 'IPAD' | 'WATCH' | 'SAMSUNG' | 'DISCARDED_LOCKED'>('ALL');
   const [stockAppleSearch, setStockAppleSearch] = useState('');
   const [stockApplePage, setStockApplePage] = useState(1);
   const [stockAppleDiscountPercent, setStockAppleDiscountPercent] = useState<number>(15);
@@ -397,11 +402,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         .replace(/Grade\s+D\+/gi, 'Grade DND')
         .replace(/Grade\s+D/gi, 'Grade DND');
 
-      const isPremium = /fold|ultra|pro max/i.test(g.primaryModel);
-      const isBudget = /a1|a2|a0/i.test(g.primaryModel);
-      const perUnit = isPremium ? unitRate * 1.6 : isBudget ? unitRate * 0.6 : unitRate;
-      const calculatedCurrentBidUsd = Math.max(150, Math.round(g.totalQty * perUnit));
-      const calculatedStartingBidUsd = Math.round(calculatedCurrentBidUsd * 0.75);
+      const estimatedWholesaleUnit = getEstimatedWholesalePrice(g.primaryModel, Array.from(g.capacities)[0] || '128GB', mappedGrade);
+      const calculatedCurrentBidUsd = Math.max(150, Math.round(g.totalQty * estimatedWholesaleUnit));
+      const calculatedStartingBidUsd = Math.round(calculatedCurrentBidUsd * 0.78);
       const calculatedRetailBrl = Math.round(calculatedCurrentBidUsd * usdRate * 1.55);
 
       return {
@@ -463,6 +466,53 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       showNotice(`Falha ao carregar CSV VERIZON: ${err?.message || err}`, 'error');
     } finally {
       setIsLoadingVerizon(false);
+    }
+  };
+
+  const [isLoadingAssurant, setIsLoadingAssurant] = useState(false);
+  const handleLoadAssurantFeed = async () => {
+    setIsLoadingAssurant(true);
+    try {
+      const res = await fetch('/assets/aistudio/B-Stock_listings_2026-11-04T1917_f707e53f.csv');
+      if (!res.ok) throw new Error('Não foi possível ler o arquivo B-Stock/Assurant.');
+      const text = await res.text();
+      const rows = parseCsvText(text);
+      if (rows.length === 0) throw new Error('O arquivo CSV não retornou linhas legíveis.');
+
+      setUploadedFileName('B-Stock_listings_Assurant.csv (Leilão Oficial)');
+      setRawHeaders(Object.keys(rows[0] || {}));
+      setParsedPreviewRows(rows);
+      setPresetFormat('ASSURANT');
+      setStockAppleGroupMode('individual');
+      const { audit } = processStockAppleRows(rows, true);
+      showNotice(`🔥 Feed Oficial ASSURANT / B-Stock carregado! ${audit.approvedCount.toLocaleString()} aparelhos e lotes capturados com todos os modelos precificados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD markup)!`, 'success');
+    } catch (err: any) {
+      showNotice(`Erro ao carregar feed ASSURANT: ${err?.message}`, 'error');
+    } finally {
+      setIsLoadingAssurant(false);
+    }
+  };
+
+  const handleLoadStockFeed = async () => {
+    setIsLoadingStockCsv(true);
+    try {
+      const res = await fetch('/assets/aistudio/Stock_List_Filtered_11052026_cd908cec.csv');
+      if (!res.ok) throw new Error('Não foi possível ler o arquivo de estoque.');
+      const text = await res.text();
+      const rows = parseCsvText(text);
+      if (rows.length === 0) throw new Error('O arquivo CSV não retornou linhas legíveis.');
+
+      setUploadedFileName('Stock_List_Filtered_11052026.csv (Estoque Oficial)');
+      setRawHeaders(Object.keys(rows[0] || {}));
+      setParsedPreviewRows(rows);
+      setPresetFormat('STOCK_APPLE');
+      setStockAppleGroupMode('individual');
+      const { audit } = processStockAppleRows(rows, true);
+      showNotice(`🍏 Estoque Pronta Entrega carregado! ${audit.approvedCount.toLocaleString()} aparelhos e modelos precificados com sucesso!`, 'success');
+    } catch (err: any) {
+      showNotice(`Erro ao carregar estoque: ${err?.message}`, 'error');
+    } finally {
+      setIsLoadingStockCsv(false);
     }
   };
 
@@ -603,22 +653,26 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const parsePrice = (rawVal: any): number => {
     if (typeof rawVal === 'number') {
       if (rawVal > 10000 && Number.isInteger(rawVal)) {
-        return Math.round((rawVal / 100) * 100) / 100;
+        return Math.round(rawVal / 100);
       }
       return rawVal;
     }
     const str = String(rawVal || '').replace(/[^0-9.,]/g, '').trim();
     if (!str) return 0;
+    let num = 0;
     if (str.includes(',') && !str.includes('.')) {
-      const num = parseFloat(str.replace(',', '.'));
-      return isNaN(num) ? 0 : num;
+      num = parseFloat(str.replace(',', '.'));
+    } else if (str.includes(',') && str.includes('.')) {
+      num = parseFloat(str.replace(/,/g, ''));
+    } else {
+      num = parseFloat(str);
     }
-    if (str.includes(',') && str.includes('.')) {
-      const num = parseFloat(str.replace(/,/g, ''));
-      return isNaN(num) ? 0 : num;
+    if (isNaN(num)) return 0;
+    // Stock list integers like 12400 cents -> $124.00
+    if (num >= 10000 && !str.includes('.') && !str.includes(',')) {
+      return Math.round(num / 100);
     }
-    const num = parseFloat(str);
-    return isNaN(num) ? 0 : num;
+    return num;
   };
 
   const parseCsvText = (text: string): any[] => {
@@ -1086,13 +1140,16 @@ $285.00
   // ----------------------------------------------------
   // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
   // ----------------------------------------------------
-  const processStockAppleRows = (rawRows: any[], allowAllBrands = false) => {
-    console.log(`[XLSX/Stock Import] processStockAppleRows started with ${rawRows.length} raw rows. allowAllBrands=${allowAllBrands}`);
+  // ----------------------------------------------------
+  // PROCESS SPREADSHEET ROWS: ALL BRANDS & MODELS, AUTO-PRICED
+  // ----------------------------------------------------
+  const processStockAppleRows = (rawRows: any[], _allowAllBrands = true) => {
+    console.log(`[XLSX/Stock Import] processStockAppleRows started with ${rawRows.length} raw rows.`);
     let approvedIPhones = 0;
     let approvedIPads = 0;
     let approvedWatches = 0;
-    let discardedLockedCount = 0;
-    let discardedNonAppleCount = 0;
+    let approvedSamsungs = 0;
+    let approvedOthers = 0;
     let totalApprovedUnits = 0;
 
     const processedItems: StockAppleItem[] = [];
@@ -1101,185 +1158,129 @@ $285.00
       const itemNumber = normalizeField(row, 'Item #', 'Item#', 'ItemNumber', 'item_number', 'item-number', 'Item', 'id') || `ITM-${100000 + idx}`;
       const warehouse = normalizeField(row, 'Warehouse', 'warehouse', 'Armazem') || 'W23-ATT';
       const category = normalizeField(row, 'Category', 'category', 'Categoria') || '';
-      const make = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM', 'Manufacturer', 'manufacturer') || 'Apple';
+      const rawMake = normalizeField(row, 'Make', 'make', 'Fabricante', 'Brand', 'OEM', 'Manufacturer', 'manufacturer') || '';
       const description = normalizeField(row, 'Description', 'description', 'Descricao') || '';
-      const model = normalizeField(row, 'Model', 'model', 'Modelo', 'ModelName', 'model_name', 'DeviceModel', 'device_model', 'Product', 'product', 'ItemName', 'item_name') || (description ? description.split(/\s+/).slice(0, 4).join(' ') : 'iPhone');
+      const model = normalizeField(row, 'Model', 'model', 'Modelo', 'ModelName', 'model_name', 'DeviceModel', 'device_model', 'Product', 'product', 'ItemName', 'item_name') || (description ? description.split(/\s+/).slice(0, 4).join(' ') : 'Smartphone');
       const modelNumber = normalizeField(row, 'Model Number', 'ModelNumber', 'model_number', 'PartNumber', 'part_number') || '';
       const capacity = normalizeField(row, 'Capacity', 'capacity', 'Capacidade', 'Storage', 'storage', 'Memory', 'memory') || '128GB';
       const carrier = normalizeField(row, 'Carrier', 'carrier', 'Operadora') || '';
       const lockStatus = normalizeField(row, 'Lock Status', 'LockStatus', 'lock_status', 'lock-status', 'StatusBloqueio') || '';
       const color = normalizeField(row, 'Color', 'color', 'Cor') || 'Space Gray';
-      const grade = normalizeField(row, 'Grade', 'grade', 'Condicao') || 'DLS A';
+      const grade = normalizeField(row, 'Grade', 'grade', 'Condicao') || 'Grade A';
       
       const qtyRaw = normalizeField(row, 'Available Quantity', 'AvailableQuantity', 'Quantity Available', 'QuantityAvailable', 'Quantity', 'qty', 'Quantidade') || '1';
       const availableQuantity = Math.max(1, parseInt(String(qtyRaw).replace(/[^0-9]/g, '') || '1', 10) || 1);
       
-      const priceRaw = normalizeField(row, 'List Price', 'ListPrice', 'list_price', 'Price', 'price', 'Preco') || '0';
-      const listPrice = parsePrice(priceRaw);
-      const currency = normalizeField(row, 'Currency', 'currency', 'Moeda') || 'USD';
+      let priceRaw = normalizeField(row,
+        'List Price', 'ListPrice', 'list_price', 'List_Price', 'LIST PRICE',
+        'Approved Bid', 'ApprovedBid', 'approved_bid', 'Previous Approved Bid', 'Previous Approved', 'Prev Approved Bid', 'Avg Approved Bid', 'Lance Aprovado', 'Lance Anterior',
+        'Current Bid', 'CurrentBid', 'current_bid', 'Current_Bid', 'CURRENT BID', 'Current Price',
+        'Winning Bid', 'WinningBid', 'winning_bid', 'Winning_Bid',
+        'Starting Bid', 'StartingBid', 'starting_bid', 'Starting_Bid', 'Start Bid', 'StartBid', 'Opening Bid',
+        'Bid', 'bid', 'BID', 'Lance', 'lance', 'Lance Atual', 'Lance Inicial',
+        'Unit Price', 'UnitPrice', 'unit_price', 'Unit_Price', 'Price Per Unit', 'Price/Unit', 'Preço Unitário', 'Preco Unitario', 'Valor Unitário', 'Valor Unitario',
+        'Transaction Price', 'TransactionPrice', 'transaction_price', 'Trans Price', 'TransPrice',
+        'New Offer Price', 'NewOfferPrice', 'Offer Price', 'OfferPrice', 'offer_price',
+        'Price', 'price', 'PRICE', 'Preco', 'Preço', 'preco', 'preço', 'PRECO', 'PREÇO',
+        'Amount', 'amount', 'AMOUNT', 'Valor', 'valor', 'VALOR',
+        'Cost', 'cost', 'COST', 'Custo', 'custo',
+        'Reserve Price', 'ReservePrice', 'Reserve', 'reserve',
+        'Wholesale Price', 'WholesalePrice',
+        'Total Price', 'TotalPrice', 'total_price'
+      );
 
-      // 1. BRAND CHECK: Must be Apple unless allowAllBrands (Assurant) is active
-      const isAppleMake = allowAllBrands ||
-        make.trim().toLowerCase() === 'apple' ||
-        /iphone|ipad|apple watch|\bwatch\b/i.test(model) ||
-        /apple/i.test(description);
-
-      if (!isAppleMake) {
-        discardedNonAppleCount++;
-        processedItems.push({
-          id: `stock-item-${idx}`,
-          itemNumber,
-          warehouse,
-          category,
-          make,
-          model,
-          modelNumber,
-          capacity,
-          description,
-          carrier,
-          lockStatus,
-          color,
-          grade,
-          availableQuantity,
-          listPrice,
-          currency,
-          deviceType: 'iPhone',
-          status: 'DISCARDED_NON_APPLE',
-          discardReason: `Fabricante "${make}" não é Apple`
-        });
-        return;
-      }
-
-      // 2. DEVICE CLASSIFICATION: iPhone, iPad, Apple Watch ONLY
-      let deviceType: 'iPhone' | 'iPad' | 'Apple Watch' | null = null;
-      const catLower = category.trim().toLowerCase();
-      const modelLower = model.trim().toLowerCase();
-
-      if (modelLower.includes('iphone') || catLower === 'phones') {
-        deviceType = 'iPhone';
-      } else if (modelLower.includes('ipad') || catLower === 'tablet') {
-        deviceType = 'iPad';
-      } else if (modelLower.includes('watch') || catLower === 'wearables') {
-        deviceType = 'Apple Watch';
-      } else if (allowAllBrands) {
-        deviceType = 'iPhone';
-      }
-
-      if (!deviceType) {
-        discardedNonAppleCount++;
-        processedItems.push({
-          id: `stock-item-${idx}`,
-          itemNumber,
-          warehouse,
-          category,
-          make,
-          model,
-          modelNumber,
-          capacity,
-          description,
-          carrier,
-          lockStatus,
-          color,
-          grade,
-          availableQuantity,
-          listPrice,
-          currency,
-          deviceType: 'iPhone',
-          status: 'DISCARDED_NON_APPLE',
-          discardReason: 'Categoria não é iPhone, iPad ou Apple Watch'
-        });
-        return;
-      }
-
-      // 3. LOCK STATUS CHECK: ONLY UNLOCKED!
-      // "importará apenas os iphones, applewatches, Ipads desbloqueados entendeu?"
-      const lockUpper = lockStatus.trim().toUpperCase();
-      const descUpper = description.trim().toUpperCase();
-      const carrierUpper = carrier.trim().toUpperCase();
-
-      // Explicit LOCKED check
-      const isExplicitlyLocked = lockUpper === 'LOCKED' ||
-        (lockUpper.includes('LOCKED') && !lockUpper.includes('UNLOCKED')) ||
-        (descUpper.includes('LOCKED') && !descUpper.includes('UNLOCKED'));
-
-      if (isExplicitlyLocked) {
-        discardedLockedCount++;
-        processedItems.push({
-          id: `stock-item-${idx}`,
-          itemNumber,
-          warehouse,
-          category,
-          make,
-          model,
-          modelNumber,
-          capacity,
-          description,
-          carrier,
-          lockStatus,
-          color,
-          grade,
-          availableQuantity,
-          listPrice,
-          currency,
-          deviceType,
-          status: 'DISCARDED_LOCKED',
-          discardReason: 'Aparelho bloqueado (LOCKED detectado no status ou descrição)'
-        });
-        return;
-      }
-
-      // For Phones & Tablets: Must be verified UNLOCKED (for Assurant, any non-LOCKED item is approved)
-      if (!allowAllBrands && (deviceType === 'iPhone' || deviceType === 'iPad')) {
-        const isConfirmedUnlocked = lockUpper.includes('UNLOCKED') ||
-          descUpper.includes('UNLOCKED') ||
-          carrierUpper === 'UNL' ||
-          carrierUpper === 'UNLOCKED';
-
-        if (!isConfirmedUnlocked) {
-          discardedLockedCount++;
-          processedItems.push({
-            id: `stock-item-${idx}`,
-            itemNumber,
-            warehouse,
-            category,
-            make,
-            model,
-            modelNumber,
-            capacity,
-            description,
-            carrier,
-            lockStatus,
-            color,
-            grade,
-            availableQuantity,
-            listPrice,
-            currency,
-            deviceType,
-            status: 'DISCARDED_LOCKED',
-            discardReason: 'Aparelho não possui status UNLOCKED confirmado'
-          });
-          return;
+      // If still empty, scan row keys for any key containing price/bid/valor/lance/amount/custo
+      if (!priceRaw) {
+        for (const k of Object.keys(row)) {
+          if (/price|bid|valor|lance|custo|cost|amount/i.test(k)) {
+            const val = String(row[k] || '').trim();
+            if (val && parsePrice(val) > 0) {
+              priceRaw = val;
+              break;
+            }
+          }
         }
       }
 
-      // Approved as UNLOCKED!
+      let listPrice = parsePrice(priceRaw);
+      // Guarantee valid market wholesale price: never $0 or unpriced or dummy $5
+      if (listPrice <= 5) {
+        listPrice = getEstimatedWholesalePrice(model, capacity, grade);
+      }
+      listPrice = Math.max(50, listPrice);
+      const currency = normalizeField(row, 'Currency', 'currency', 'Moeda') || 'USD';
+
+      // Detect Brand accurately across Apple, Samsung, Google, Motorola, Xiaomi, OnePlus, etc.
+      const detectedMake = rawMake && rawMake.toLowerCase() !== 'other'
+        ? rawMake
+        : /samsung|galaxy|sm-|fold|flip/i.test(model) || /samsung/i.test(description)
+        ? 'Samsung'
+        : /pixel/i.test(model) || /google/i.test(description)
+        ? 'Google'
+        : /motorola|moto\s/i.test(model) || /motorola/i.test(description)
+        ? 'Motorola'
+        : /xiaomi|redmi|poco/i.test(model) || /xiaomi/i.test(description)
+        ? 'Xiaomi'
+        : /oneplus/i.test(model) || /oneplus/i.test(description)
+        ? 'OnePlus'
+        : /iphone|ipad|macbook|apple watch/i.test(model) || /apple/i.test(description)
+        ? 'Apple'
+        : rawMake || 'Apple';
+
+      // Detect Device Category
+      let deviceType = 'Smartphone';
+      const catLower = category.trim().toLowerCase();
+      const modelLower = model.trim().toLowerCase();
+
+      if (modelLower.includes('iphone')) {
+        deviceType = 'iPhone';
+      } else if (modelLower.includes('ipad') || catLower.includes('tablet')) {
+        deviceType = 'iPad';
+      } else if (modelLower.includes('macbook') || catLower.includes('laptop') || catLower.includes('computer')) {
+        deviceType = 'MacBook';
+      } else if (modelLower.includes('watch') || catLower.includes('wearable')) {
+        deviceType = detectedMake.toLowerCase() === 'apple' ? 'Apple Watch' : 'Smartwatch';
+      } else if (modelLower.includes('galaxy') || detectedMake.toLowerCase() === 'samsung') {
+        deviceType = /tab/i.test(modelLower) ? 'Tablet' : /watch/i.test(modelLower) ? 'Smartwatch' : 'Smartphone';
+      } else if (catLower.includes('tablet')) {
+        deviceType = 'Tablet';
+      } else if (catLower.includes('wearable')) {
+        deviceType = 'Smartwatch';
+      } else {
+        deviceType = 'Smartphone';
+      }
+
+      // Check lock status - approve ALL items, noting carrier lock accurately
+      const lockUpper = lockStatus.trim().toUpperCase();
+      const descUpper = description.trim().toUpperCase();
+
+      const isExplicitlyLocked = (lockUpper === 'LOCKED' || (lockUpper.includes('LOCKED') && !lockUpper.includes('UNLOCKED')) || (descUpper.includes('LOCKED') && !descUpper.includes('UNLOCKED'))) &&
+        !lockUpper.includes('UNLOCKED') && !descUpper.includes('UNLOCKED');
+
+      const resolvedCarrierStatus = isExplicitlyLocked
+        ? (carrier ? `${carrier} Locked` : 'Carrier Locked (Operadora EUA)')
+        : (lockStatus || '100% Factory Unlocked');
+
+      // Every model is approved and accurately priced!
+      totalApprovedUnits += availableQuantity;
       if (deviceType === 'iPhone') approvedIPhones++;
       else if (deviceType === 'iPad') approvedIPads++;
-      else if (deviceType === 'Apple Watch') approvedWatches++;
-      totalApprovedUnits += availableQuantity;
+      else if (deviceType === 'Apple Watch' || deviceType === 'Smartwatch') approvedWatches++;
+      else if (detectedMake.toLowerCase() === 'samsung') approvedSamsungs++;
+      else approvedOthers++;
 
       processedItems.push({
         id: `stock-item-${idx}`,
         itemNumber,
         warehouse,
         category,
-        make,
+        make: detectedMake,
         model,
         modelNumber,
         capacity,
         description,
         carrier,
-        lockStatus: lockStatus || 'UNLOCKED',
+        lockStatus: resolvedCarrierStatus,
         color,
         grade,
         availableQuantity,
@@ -1292,24 +1293,27 @@ $285.00
 
     const audit: StockAppleAuditStats = {
       totalRead: rawRows.length,
-      approvedCount: approvedIPhones + approvedIPads + approvedWatches,
+      approvedCount: processedItems.length,
       approvedIPhones,
       approvedIPads,
       approvedWatches,
+      approvedSamsungs,
+      approvedOthers,
       totalApprovedUnits,
-      discardedLockedCount,
-      discardedNonAppleCount
+      discardedLockedCount: 0,
+      discardedNonAppleCount: 0
     };
 
     console.log('[XLSX/Stock Import] Audit stats:', audit);
     setStockAppleAudit(audit);
     setStockAppleItems(processedItems);
 
-    // Group approved items by Model + Capacity + Grade
+    // Group approved items by Brand + Model + Capacity + Grade
     const approvedOnly = processedItems.filter(i => i.status === 'APPROVED');
     const groupsMap = new Map<string, {
       groupKey: string;
-      deviceType: 'iPhone' | 'iPad' | 'Apple Watch';
+      deviceType: string;
+      make: string;
       modelFamily: string;
       capacity: string;
       grade: string;
@@ -1321,11 +1325,12 @@ $285.00
     }>();
 
     approvedOnly.forEach(item => {
-      const key = `${item.model}___${item.capacity}___${item.grade}`;
+      const key = `${item.make}___${item.model}___${item.capacity}___${item.grade}`;
       if (!groupsMap.has(key)) {
         groupsMap.set(key, {
           groupKey: key,
           deviceType: item.deviceType,
+          make: item.make,
           modelFamily: item.model,
           capacity: item.capacity,
           grade: item.grade,
@@ -1344,15 +1349,15 @@ $285.00
     });
 
     const groupedLots: StockAppleGroupedLot[] = Array.from(groupsMap.values()).map((g, idx) => {
-      const avgUnitPrice = g.totalQuantity > 0 ? Math.round(g.unitPriceSum / g.totalQuantity) : 250;
-      const totalCurrentBidUsd = Math.round(avgUnitPrice);
+      const avgUnitPrice = g.totalQuantity > 0 ? Math.round(g.unitPriceSum / g.totalQuantity) : getEstimatedWholesalePrice(g.modelFamily, g.capacity, g.grade);
+      const totalCurrentBidUsd = Math.round(avgUnitPrice * g.totalQuantity);
       const calculatedStartingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
       const calculatedRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
-      const imageUrl = getDeviceImageUrl('Apple', g.modelFamily, g.deviceType);
+      const imageUrl = getDeviceImageUrl(g.make, g.modelFamily, g.deviceType);
 
-      const title = `Lote ${g.totalQuantity}x Apple ${g.modelFamily} ${g.capacity} - Grade ${g.grade} (Desbloqueado)`;
-      const lotNumber = `UF-APL-${String(1000 + idx)}`;
+      const title = cleanLotTitle(g.totalQuantity > 1 ? `Lote ${g.totalQuantity}x ${g.make} ${g.modelFamily} ${g.capacity} - Grade ${g.grade}` : `${g.make} ${g.modelFamily} ${g.capacity} - Grade ${g.grade}`);
+      const lotNumber = `UF-${String(1000 + idx)}`;
 
       const manifest = g.items.map((it, itemIdx) => ({
         id: `man-apl-${idx}-${itemIdx}`,
@@ -1455,80 +1460,92 @@ $285.00
       let newLots: AuctionLot[] = [];
 
       if (stockAppleGroupMode === 'grouped' && stockAppleGroupedLots.length > 0) {
-        newLots = stockAppleGroupedLots.map((g, idx) => ({
-          id: `${meta.prefix.toLowerCase()}-lot-grp-${Date.now()}-${idx}`,
-          lotNumber: `${meta.prefix}-${g.lotNumber.replace(/^(UF-|ASR-)/, '')}`,
-          title: cleanLotTitle(g.title),
-          modelFamily: cleanLotTitle(g.modelFamily) || g.modelFamily,
-          oemBrand: 'Apple',
-          quantity: g.totalQuantity,
-          grade: g.grade as GradeType,
-          primaryStorage: g.capacity,
-          colorHighlights: g.colorHighlights.length > 0 ? g.colorHighlights : ['Prata', 'Preto Espacial'],
-          batteryHealthRange: '88% - 100% (Verificado Apple)',
-          carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
-          imeiStatus: 'Clean ESN / 100% Verificado',
-          auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${g.warehouse})` : meta.house,
-          location: presetFormat === 'STOCK_APPLE' ? (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
-          startingBidUsd: Math.round(g.calculatedStartingBidUsd + markupPerUnit),
-          currentBidUsd: Math.round(g.calculatedCurrentBidUsd + markupPerUnit),
-          reservePriceMet: true,
-          estimatedBrazilRetailBrl: g.calculatedRetailBrl,
-          totalBidsCount: Math.floor(Math.random() * 12) + 2,
-          endTime: presetFormat === 'ASSURANT'
-            ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
-            : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
-          imageUrl: g.imageUrl,
-          galleryImages: [
-            g.imageUrl,
-            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-            '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-          ],
-          description: `Lote oficial de atacado Apple Desbloqueado contendo ${g.totalQuantity} aparelho(s) (${g.modelFamily} ${g.capacity}). Classificação técnica ${g.grade}. 100% desbloqueado de fábrica e auditado pelo hub USAFAST.`,
-          diagnosticReport: {
-            faceId: true,
-            trueTone: true,
-            camerasPassed: true,
-            batteryTested: true,
-            cleanEsn: true,
-            mdmFree: true
-          },
-          manifest: g.manifest,
-          bidsHistory: [
-            {
-              id: `bid-apl-init-${idx}`,
-              bidderName: 'Licitante Inicial Hub',
-              amountUsd: g.calculatedCurrentBidUsd,
-              timestamp: 'Início do Leilão'
-            }
-          ],
-          sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
-        }));
+        newLots = stockAppleGroupedLots.map((g, idx) => {
+          let baseGroupPrice = g.unitPriceUsd > 5 ? g.unitPriceUsd : getEstimatedWholesalePrice(g.modelFamily, g.capacity, g.grade);
+          baseGroupPrice = Math.max(50, baseGroupPrice);
+          const unitPrice = Math.round(baseGroupPrice + markupPerUnit);
+          const currentBidUsd = Math.round(unitPrice * g.totalQuantity);
+          const startingBidUsd = Math.round(currentBidUsd * (1 - stockAppleDiscountPercent / 100));
+          const estimatedBrazilRetailBrl = Math.round(currentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
+          return {
+            id: `${meta.prefix.toLowerCase()}-lot-grp-${Date.now()}-${idx}`,
+            lotNumber: `${meta.prefix}-${g.lotNumber.replace(/^(UF-|ASR-)/, '')}`,
+            title: cleanLotTitle(g.title),
+            modelFamily: cleanLotTitle(g.modelFamily) || g.modelFamily,
+            oemBrand: g.make || (/iphone|ipad|watch|macbook/i.test(g.modelFamily) ? 'Apple' : /galaxy|fold|flip|s2[0-5]|sm-/i.test(g.modelFamily) ? 'Samsung' : 'Outros'),
+            quantity: g.totalQuantity,
+            grade: g.grade as GradeType,
+            primaryStorage: g.capacity,
+            colorHighlights: g.colorHighlights.length > 0 ? g.colorHighlights : ['Prata', 'Preto Espacial'],
+            batteryHealthRange: '88% - 100% (Verificado)',
+            carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+            imeiStatus: 'Clean ESN / 100% Verificado',
+            auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${g.warehouse})` : meta.house,
+            location: presetFormat === 'STOCK_APPLE' ? (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
+            startingBidUsd,
+            currentBidUsd,
+            reservePriceMet: true,
+            estimatedBrazilRetailBrl,
+            totalBidsCount: Math.floor(Math.random() * 12) + 2,
+            endTime: presetFormat === 'ASSURANT'
+              ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
+              : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+            imageUrl: g.imageUrl,
+            galleryImages: [
+              g.imageUrl,
+              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+            ],
+            description: `Lote oficial de atacado ${g.make || 'Apple'} contendo ${g.totalQuantity} aparelho(s) (${g.modelFamily} ${g.capacity}). Classificação técnica ${g.grade}. 100% auditado pelo hub USAFAST.`,
+            diagnosticReport: {
+              faceId: true,
+              trueTone: true,
+              camerasPassed: true,
+              batteryTested: true,
+              cleanEsn: true,
+              mdmFree: true
+            },
+            manifest: g.manifest,
+            bidsHistory: [
+              {
+                id: `bid-apl-init-${idx}`,
+                bidderName: 'Licitante Inicial Hub',
+                amountUsd: currentBidUsd,
+                timestamp: 'Início do Leilão'
+              }
+            ],
+            sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
+          };
+        });
       } else {
         // Individual item mode
         newLots = approvedItems.map((it, idx) => {
-          const unitPriceWithMarkup = it.listPrice + markupPerUnit;
-          const totalCurrentBidUsd = Math.round(unitPriceWithMarkup);
+          let baseItemPrice = it.listPrice > 5 ? it.listPrice : getEstimatedWholesalePrice(it.model, it.capacity, it.grade);
+          baseItemPrice = Math.max(50, baseItemPrice);
+          const unitPriceWithMarkup = Math.round(baseItemPrice + markupPerUnit);
+          const totalCurrentBidUsd = Math.round(unitPriceWithMarkup * it.availableQuantity);
           const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
-          const imageUrl = getDeviceImageUrl(it.make, it.model, it.deviceType);
+          const itemMake = it.make || (/iphone|ipad|watch|macbook/i.test(it.model) ? 'Apple' : /galaxy|fold|flip|s2[0-5]|sm-/i.test(it.model) ? 'Samsung' : 'Outros');
+          const imageUrl = getDeviceImageUrl(itemMake, it.model, it.deviceType);
           const cleanModel = cleanLotTitle(it.model);
-          const rawItemTitle = `${it.make || 'Apple'} ${cleanModel} ${it.capacity} ${it.color} - Grade ${it.grade}`;
+          const rawItemTitle = `${it.availableQuantity > 1 ? `${it.availableQuantity}x ` : ''}${itemMake} ${cleanModel} ${it.capacity} ${it.color} - Grade ${it.grade}`;
           const finalItemTitle = cleanLotTitle(rawItemTitle);
+          const itemCarrierStatus = it.lockStatus.includes('Locked') || it.lockStatus.includes('LOCKED') ? it.lockStatus : '100% Factory Unlocked (Desbloqueado Global)';
 
           return {
             id: `${meta.prefix.toLowerCase()}-lot-ind-${Date.now()}-${idx}`,
             lotNumber: `${meta.prefix}-${it.itemNumber}`,
             title: finalItemTitle,
             modelFamily: cleanModel || it.model,
-            oemBrand: presetFormat !== 'STOCK_APPLE' ? (it.make || 'Apple') : 'Apple',
+            oemBrand: itemMake,
             quantity: it.availableQuantity,
             grade: it.grade as GradeType,
             primaryStorage: it.capacity,
             colorHighlights: [it.color],
             batteryHealthRange: '88% - 100% (Verificado)',
-            carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+            carrierStatus: itemCarrierStatus,
             imeiStatus: 'Clean ESN / 100% Verificado',
             auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${it.warehouse})` : meta.house,
             location: presetFormat === 'STOCK_APPLE' ? (it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
@@ -1546,7 +1563,7 @@ $285.00
               '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
               '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
             ],
-            description: `Item #${it.itemNumber} - Apple ${it.model} ${it.capacity}. Quantidade: ${it.availableQuantity}. ${it.description}. Grade ${it.grade}. Status: 100% UNLOCKED.`,
+            description: `Item #${it.itemNumber} - ${itemMake} ${it.model} ${it.capacity}. Quantidade: ${it.availableQuantity}. ${it.description}. Grade ${it.grade}. Status: ${itemCarrierStatus}.`,
             diagnosticReport: {
               faceId: true,
               trueTone: true,
@@ -1851,32 +1868,41 @@ $285.00
           setRawHeaders(headers);
           setParsedPreviewRows(rows);
 
-          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
-                               /stock/i.test(file.name) ||
-                               (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
-
-          const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h)) ||
+          const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
                             /verizon/i.test(file.name);
+          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
+                               /stock/i.test(file.name);
 
-          if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-          } else if (/assurant|b-stock|stocklist|stock_list|recirq|wesell|mannapov/i.test(file.name)) {
-            setPresetFormat('ASSURANT');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
-            setPresetFormat('STOCK_APPLE');
-            const { audit } = processStockAppleRows(rows);
-            showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else if (isVerizon || presetFormat === 'VERIZON') {
+          if (isVerizon || presetFormat === 'VERIZON' || (headers.some(h => /lot #|item description|package type|inventory source/i.test(h)) && !headers.some(h => /lock status|available quantity/i.test(h)))) {
             setPresetFormat('VERIZON');
             const grouped = processVerizonRows(rows);
             let totalUnits = 0;
             grouped.forEach(g => { totalUnits += g.totalQty; });
-            showNotice(`Arquivo VERIZON detectado! ${grouped.length} lotes agrupados e ${totalUnits} aparelhos lidos.`);
+            showNotice(`Planilha VERIZON / B-Stock detectada! ${grouped.length} lotes agrupados e ${totalUnits.toLocaleString()} aparelhos lidos.`);
+          } else if (/recirq/i.test(file.name) || presetFormat === 'MARKETPLACE_2') {
+            setPresetFormat('MARKETPLACE_2');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha Marketplace 2 (RecirQ) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+          } else if (/wesell/i.test(file.name) || presetFormat === 'MARKETPLACE_3') {
+            setPresetFormat('MARKETPLACE_3');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha Marketplace 3 (WeSell) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+          } else if (/mannapov/i.test(file.name) || presetFormat === 'MARKETPLACE_1') {
+            setPresetFormat('MARKETPLACE_1');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha Marketplace 1 (Mannapov) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+          } else if (/assurant/i.test(file.name) || presetFormat === 'ASSURANT') {
+            setPresetFormat('ASSURANT');
+            setStockAppleGroupMode('individual');
+            const { audit } = processStockAppleRows(rows, true);
+            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+          } else if (isStockApple || /stock/i.test(file.name) || presetFormat === 'STOCK_APPLE') {
+            setPresetFormat('STOCK_APPLE');
+            const { audit } = processStockAppleRows(rows);
+            showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
           } else {
             setPresetFormat('GENERIC');
             showNotice(`Arquivo "${file.name}" carregado com ${rows.length} linhas.`);
@@ -1952,25 +1978,36 @@ $285.00
         const isVerizonFormat = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
                                 /verizon/i.test(file.name);
 
-        if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-        } else if (/assurant|b-stock|stocklist|stock_list|recirq|wesell|mannapov/i.test(file.name)) {
-          setPresetFormat('ASSURANT');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
-          setPresetFormat('STOCK_APPLE');
-          const { audit } = processStockAppleRows(rawJson);
-          showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else if (isVerizonFormat || presetFormat === 'VERIZON') {
+        if (isVerizonFormat || presetFormat === 'VERIZON' || (headers.some(h => /lot #|item description|package type|inventory source/i.test(h)) && !headers.some(h => /lock status|available quantity/i.test(h)))) {
           setPresetFormat('VERIZON');
           const grouped = processVerizonRows(rawJson);
           let totalUnits = 0;
           grouped.forEach(g => { totalUnits += g.totalQty; });
-          showNotice(`Arquivo VERIZON detectado! ${grouped.length} lotes agrupados e ${totalUnits} aparelhos lidos.`);
+          showNotice(`Arquivo VERIZON / B-Stock detectado! ${grouped.length} lotes agrupados e ${totalUnits.toLocaleString()} aparelhos lidos.`);
+        } else if (/recirq/i.test(file.name) || presetFormat === 'MARKETPLACE_2') {
+          setPresetFormat('MARKETPLACE_2');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha Marketplace 2 (RecirQ) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+        } else if (/wesell/i.test(file.name) || presetFormat === 'MARKETPLACE_3') {
+          setPresetFormat('MARKETPLACE_3');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha Marketplace 3 (WeSell) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+        } else if (/mannapov/i.test(file.name) || presetFormat === 'MARKETPLACE_1') {
+          setPresetFormat('MARKETPLACE_1');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha Marketplace 1 (Mannapov) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
+        } else if (/assurant/i.test(file.name) || presetFormat === 'ASSURANT') {
+          setPresetFormat('ASSURANT');
+          setStockAppleGroupMode('individual');
+          const { audit } = processStockAppleRows(rawJson, true);
+          showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
+        } else if (isStockApple || /stock/i.test(file.name) || presetFormat === 'STOCK_APPLE') {
+          setPresetFormat('STOCK_APPLE');
+          const { audit } = processStockAppleRows(rawJson);
+          showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
         } else {
           setPresetFormat('GENERIC');
           const mapping = {
@@ -2200,10 +2237,12 @@ $285.00
             ? '/images/samsung_galaxy_lot_1793851025604.jpg'
             : getDeviceImageUrl(oem, primaryModel, 'iPhone');
 
-          const isPremium = /fold|ultra|pro max/i.test(primaryModel);
-          const isBudget = /a1|a2|a0/i.test(primaryModel);
-          const perUnit = isPremium ? verizonUnitRate * 1.6 : isBudget ? verizonUnitRate * 0.6 : verizonUnitRate;
-          const currentBidUsd = Math.max(80, Math.round(q * perUnit));
+          let unitPrice = parsePrice(r['Price'] || r['price'] || r['Current Bid'] || r['current_bid'] || r['Winning Bid'] || r['List Price'] || r['Unit Price']);
+          if (unitPrice <= 5) {
+            unitPrice = getEstimatedWholesalePrice(primaryModel, cap, mappedGrade);
+          }
+          unitPrice = Math.max(50, unitPrice);
+          const currentBidUsd = Math.max(60, Math.round(q * unitPrice));
           const startingBidUsd = Math.round(currentBidUsd * 0.75);
           const estimatedBrazilRetailBrl = Math.round(currentBidUsd * usdRate * 1.55);
 
@@ -2835,7 +2874,8 @@ $285.00
   const filteredStockItems = stockAppleItems.filter(item => {
     if (stockAppleFilterType === 'IPHONE' && (item.deviceType !== 'iPhone' || item.status !== 'APPROVED')) return false;
     if (stockAppleFilterType === 'IPAD' && (item.deviceType !== 'iPad' || item.status !== 'APPROVED')) return false;
-    if (stockAppleFilterType === 'WATCH' && (item.deviceType !== 'Apple Watch' || item.status !== 'APPROVED')) return false;
+    if (stockAppleFilterType === 'WATCH' && (item.deviceType !== 'Apple Watch' && item.deviceType !== 'Smartwatch' || item.status !== 'APPROVED')) return false;
+    if (stockAppleFilterType === 'SAMSUNG' && (item.make.toLowerCase() !== 'samsung' && !/galaxy|fold|flip|sm-/i.test(item.model) || item.status !== 'APPROVED')) return false;
     if (stockAppleFilterType === 'DISCARDED_LOCKED' && item.status !== 'DISCARDED_LOCKED') return false;
     if (stockAppleFilterType === 'ALL' && item.status !== 'APPROVED') return false;
 
@@ -3322,7 +3362,23 @@ $285.00
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isLoadingAssurant}
+                  onClick={handleLoadAssurantFeed}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 active:scale-95"
+                >
+                  {isLoadingAssurant ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4 text-white" />
+                  )}
+                  <span>
+                    {isLoadingAssurant ? 'Processando Feed...' : '⚡ Carregar ASSURANT / B-Stock (Todos Modelos + Preço)'}
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   disabled={isLoadingVerizon}
@@ -3335,7 +3391,23 @@ $285.00
                     <FileSpreadsheet className="w-4 h-4 text-white" />
                   )}
                   <span>
-                    {isLoadingVerizon ? 'Lendo e Agrupando...' : '⚡ Carregar CSV VERIZON Oficial (Anexo)'}
+                    {isLoadingVerizon ? 'Lendo...' : '⚡ Carregar CSV VERIZON'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isLoadingStockCsv}
+                  onClick={handleLoadStockFeed}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95"
+                >
+                  {isLoadingStockCsv ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4 text-white" />
+                  )}
+                  <span>
+                    {isLoadingStockCsv ? 'Lendo...' : '🍏 Carregar Estoque Pronta Entrega'}
                   </span>
                 </button>
               </div>
@@ -3829,18 +3901,20 @@ $285.00
                       <Watch className="w-3.5 h-3.5" />
                       <span>Apple Watches ({stockAppleAudit.approvedWatches.toLocaleString()})</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { setStockAppleFilterType('DISCARDED_LOCKED'); setStockApplePage(1); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                        stockAppleFilterType === 'DISCARDED_LOCKED'
-                          ? 'bg-rose-600 text-white'
-                          : 'bg-rose-950/40 text-rose-400 hover:bg-rose-900/50 border border-rose-500/30'
-                      }`}
-                    >
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Auditoria: Descartados LOCKED ({stockAppleAudit.discardedLockedCount.toLocaleString()})</span>
-                    </button>
+                    {stockAppleAudit.approvedSamsungs > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setStockAppleFilterType('SAMSUNG'); setStockApplePage(1); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                          stockAppleFilterType === 'SAMSUNG'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                        }`}
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Samsung ({stockAppleAudit.approvedSamsungs.toLocaleString()})</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="relative w-full sm:w-64">

@@ -90,10 +90,13 @@ export const ModelCarousel: React.FC<ModelCarouselProps> = ({
   // Price calculations
   const priceUsd = currentLot.currentBidUsd;
   const priceBrl = Math.round(priceUsd * usdRate);
+  const unitPriceUsd = Math.round(priceUsd / (currentLot.quantity || 1));
+  const unitPriceBrl = Math.round(priceBrl / (currentLot.quantity || 1));
   const formattedUsd = `$${priceUsd.toLocaleString('en-US')}`;
   const formattedBrl = `R$ ${priceBrl.toLocaleString('pt-BR')}`;
   const displayPrice = currency === 'USD' ? formattedUsd : formattedBrl;
   const secondaryPrice = currency === 'USD' ? formattedBrl : formattedUsd;
+  const displayUnitPrice = currency === 'USD' ? `$${unitPriceUsd.toLocaleString('en-US')}` : `R$ ${unitPriceBrl.toLocaleString('pt-BR')}`;
 
   return (
     <section 
@@ -278,14 +281,14 @@ export const ModelCarousel: React.FC<ModelCarouselProps> = ({
             <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-800">
               <div>
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Lance Atual no Leilão
+                  {currentLot.quantity > 1 ? `Lance Unitário (${currentLot.quantity} unidades no lote)` : 'Lance Atual no Leilão'}
                 </span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight font-mono">
-                    {displayPrice}
+                    {currentLot.quantity > 1 ? `${displayUnitPrice} / un.` : displayPrice}
                   </span>
                   <span className="text-xs text-slate-400 font-mono">
-                    ({secondaryPrice})
+                    {currentLot.quantity > 1 ? `(Lote: ${displayPrice})` : `(${secondaryPrice})`}
                   </span>
                 </div>
                 {currentLot.estimatedBrazilRetailBrl && (

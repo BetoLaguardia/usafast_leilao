@@ -55,7 +55,7 @@ export default function App() {
       if (saved) {
         let parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Exclude anything that is not a real spreadsheet auction (e.g. GovDeals, Copart, Liquidation.com, Apple Certified, etc.)
+          // Exclude legacy mock auction platforms (e.g. GovDeals, Copart, liquidation.com)
           parsed = parsed.filter((a: any) => {
             const house = (a.auctionHouse || '').toLowerCase();
             const title = (a.title || '').toLowerCase();
@@ -64,8 +64,6 @@ export default function App() {
             if (house.includes('copart') || title.includes('copart') || src.includes('copart')) return false;
             if (house.includes('liquidation.com') || title.includes('liquidation.com')) return false;
             if (house.includes('apple certified') || title.includes('apple certified')) return false;
-            if (house.includes('marketplace') || title.includes('marketplace')) return false;
-            if (house.includes('pronta entrega') || title.includes('pronta entrega')) return false;
             return true;
           });
           // Sanitize titles to remove 'Lote' prefix
@@ -285,7 +283,7 @@ export default function App() {
   useEffect(() => {
     console.log('[App.tsx] Fetching initial auctions from /api/auctions...');
     const sanitizeLots = (lots: any[]): AuctionLot[] => {
-      const banned = /govdeals|copart|liquidation\.com|apple certified|marketplace|pronta entrega/i;
+      const banned = /govdeals|copart|liquidation\.com|apple certified/i;
       return (lots || [])
         .filter(l => !banned.test(l.auctionHouse || '') && !banned.test(l.title || '') && !banned.test(l.sourceType || ''))
         .map(l => ({ ...l, title: stripLotPrefix(l.title) }));

@@ -148,9 +148,9 @@ export const ClientePage: React.FC<ClientePageProps> = ({
   };
 
   // Dynamic list of models, grades and auction houses present in active catalog
-  const availableModels = Array.from(new Set(auctions.map(a => a.modelFamily))).filter(Boolean);
-  const availableGrades = Array.from(new Set(auctions.map(a => a.grade))).filter(Boolean);
-  const availableAuctionHouses = Array.from(new Set(auctions.map(a => a.auctionHouse))).filter(Boolean);
+  const availableModels = Array.from(new Set(auctions.map(a => a.modelFamily))).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const availableGrades = Array.from(new Set(auctions.map(a => a.grade))).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const availableAuctionHouses = Array.from(new Set(auctions.map(a => a.auctionHouse))).filter(Boolean).sort((a, b) => a.localeCompare(b));
 
   // Filtered devices for client
   const clientFilteredLots = auctions.filter(lot => {
@@ -174,7 +174,8 @@ export const ClientePage: React.FC<ClientePageProps> = ({
       const text = `${lot.modelFamily} ${lot.title} ${lot.description}`.toLowerCase();
       if (selectedCategoryFilter === 'Tablets' && !/ipad|tablet/i.test(text)) return false;
       if (selectedCategoryFilter === 'Smartwatch' && !/watch|wearable/i.test(text)) return false;
-      if (selectedCategoryFilter === 'Phones' && (/ipad|tablet|watch|wearable|macbook/i.test(text))) return false;
+      if (selectedCategoryFilter === 'MacBooks' && !/macbook|laptop|notebook/i.test(text)) return false;
+      if (selectedCategoryFilter === 'Phones' && (/ipad|tablet|watch|wearable|macbook|laptop|notebook/i.test(text))) return false;
     }
     if (selectedCapacityFilter !== 'all' && !lot.primaryStorage.toLowerCase().includes(selectedCapacityFilter.toLowerCase())) return false;
     if (selectedAuctionHouseFilter !== 'all' && lot.auctionHouse !== selectedAuctionHouseFilter) return false;
@@ -362,9 +363,13 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   onChange={e => setSelectedAuctionSystemFilter(e.target.value as any)}
                   className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-bold"
                 >
-                  <option value="all">Todos os Leilões Oficiais</option>
+                  <option value="all">Todos os Leilões & Feeds</option>
                   <option value="VERIZON">⚡ Leilão VERIZON</option>
                   <option value="ASSURANT">🔹 Leilão ASSURANT</option>
+                  <option value="STOCK_APPLE">📦 Estoque Apple Pronta Entrega</option>
+                  <option value="MARKETPLACE_1">🏬 Marketplace 1 (Mannapov)</option>
+                  <option value="MARKETPLACE_2">🏬 Marketplace 2 (RecirQ)</option>
+                  <option value="MARKETPLACE_3">🏬 Marketplace 3 (WeSell)</option>
                   <option value="MACBOOKS">💻 Leilão Macbooks</option>
                 </select>
               </div>
@@ -512,6 +517,8 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                     {/* Mobile Card View (< md) */}
                     <div className="md:hidden divide-y divide-slate-800/80">
                       {paginatedClientLots.map(lot => {
+                        const unitPriceUsd = Math.round(lot.currentBidUsd / (lot.quantity || 1));
+                        const unitPriceBrl = unitPriceUsd * usdRate;
                         const currentBrl = lot.currentBidUsd * usdRate;
                   return (
                     <div key={lot.id} className="p-4 space-y-3">
@@ -546,13 +553,18 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
                         <div>
-                          <span className="text-[10px] text-slate-400 block">Lance Atual (Un.):</span>
+                          <span className="text-[10px] text-slate-400 block">Lance Atual:</span>
                           <span className="font-mono font-bold text-amber-400 text-sm">
-                            ${lot.currentBidUsd.toLocaleString()} USD
+                            ${unitPriceUsd.toLocaleString()} USD <span className="text-[10px] font-normal text-slate-400">/ un.</span>
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono ml-1.5">
-                            (R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })})
+                            (≈ R$ {unitPriceBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })})
                           </span>
+                          {lot.quantity > 1 && (
+                            <span className="text-[10px] text-amber-300/80 font-mono block">
+                              Total Lote: ${lot.currentBidUsd.toLocaleString()} USD
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -672,11 +684,16 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                           <td className="p-3.5">
                             <div className="font-mono">
                               <span className="text-base font-black text-amber-400 block">
-                                ${(lot.quantity > 1 && lot.currentBidUsd / lot.quantity >= 80 ? Math.round(lot.currentBidUsd / lot.quantity) : lot.currentBidUsd).toLocaleString()} USD <span className="text-[10px] font-normal text-slate-400">/ un.</span>
+                                ${Math.round(lot.currentBidUsd / (lot.quantity || 1)).toLocaleString()} USD <span className="text-[10px] font-normal text-slate-400">/ un.</span>
                               </span>
                               <span className="text-[10px] text-slate-400 block">
-                                ≈ R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                ≈ R$ {Math.round((lot.currentBidUsd / (lot.quantity || 1)) * usdRate).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} / un.
                               </span>
+                              {lot.quantity > 1 && (
+                                <span className="text-[10px] text-amber-300/80 font-mono block">
+                                  Total Lote: ${lot.currentBidUsd.toLocaleString()} USD
+                                </span>
+                              )}
                               <span className="text-[10px] text-slate-500 font-sans block">
                                 {lot.totalBidsCount} lances
                               </span>
@@ -821,11 +838,16 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                           <div>
                             <span className="text-[11px] text-slate-400 block">Lance Atual:</span>
                             <span className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tight block">
-                              ${lot.currentBidUsd.toLocaleString()} USD
+                              ${Math.round(lot.currentBidUsd / (lot.quantity || 1)).toLocaleString()} USD <span className="text-xs font-normal text-slate-400">/ un.</span>
                             </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              ≈ R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              ≈ R$ {Math.round((lot.currentBidUsd / (lot.quantity || 1)) * usdRate).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} / un.
                             </span>
+                            {lot.quantity > 1 && (
+                              <span className="text-[10px] text-amber-300/80 font-mono block">
+                                Total Lote ({lot.quantity} un.): ${lot.currentBidUsd.toLocaleString()} USD
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-right">

@@ -167,10 +167,17 @@ const AuctionCardComponent: React.FC<AuctionCardProps> = ({
         <div className="pt-2 border-t border-slate-800/80 space-y-3">
           <div className="flex items-end justify-between">
             <div>
-              <span className="text-[11px] text-slate-400 block">Lance Atual:</span>
+              <span className="text-[11px] text-slate-400 block">
+                {lot.quantity > 1 ? 'Lance Atual (Total Lote):' : 'Lance Atual:'}
+              </span>
               <span className="text-xl sm:text-2xl font-black text-amber-400 font-mono tracking-tight block">
                 {formattedCurrentPrice}
               </span>
+              {lot.quantity > 1 && (
+                <span className="text-[11px] text-amber-300 font-mono block">
+                  ($ {Math.round(lot.currentBidUsd / lot.quantity).toLocaleString()} USD / un.)
+                </span>
+              )}
               <span className="text-[10px] text-slate-400 font-mono">
                 {currency === 'USD' ? `≈ R$ ${currentBidBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}` : `≈ $ ${lot.currentBidUsd.toLocaleString()} USD`}
               </span>
