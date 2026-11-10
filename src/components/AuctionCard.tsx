@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Gavel, Clock, MapPin, Battery, Smartphone, ShieldCheck, ArrowUpRight, Calculator, Layers } from 'lucide-react';
 import { AuctionLot } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
+import { stripLotPrefix } from '../utils/deviceImages';
 
 interface AuctionCardProps {
   lot: AuctionLot;
@@ -51,7 +52,7 @@ const AuctionCardComponent: React.FC<AuctionCardProps> = ({
   }, [lot.endTime]);
 
   const cleanGrade = (lot.grade || '').replace(/\(T\)/gi, '').trim() || 'Grade A';
-  const cleanTitle = (lot.title || '').replace(/\(T\)/gi, '').trim();
+  const cleanTitle = stripLotPrefix(lot.title);
 
   const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || GRADE_EXPLANATIONS[cleanGrade] || GRADE_EXPLANATIONS['Grade A'];
 

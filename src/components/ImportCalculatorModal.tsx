@@ -105,7 +105,7 @@ export const ImportCalculatorModal: React.FC<ImportCalculatorModalProps> = ({
               }}
               className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-xs transition-colors"
             >
-              Lote 10x 16 Pro Max
+              10x 16 Pro Max (Exemplo)
             </button>
           </div>
 
@@ -150,7 +150,7 @@ export const ImportCalculatorModal: React.FC<ImportCalculatorModalProps> = ({
               >
                 <option value="5">5% (Grandes Lotes / Atacado Operadoras)</option>
                 <option value="10">10% (Padrão Casas de Leilão EUA)</option>
-                <option value="12">12% (GovDeals / Liquidation.com)</option>
+                <option value="12">12% (Taxa Padrão Leilão EUA)</option>
               </select>
             </div>
 

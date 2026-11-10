@@ -1,5 +1,17 @@
 // Banco de dados de imagens reais por marca e modelo para importação automática de lotes
 
+/**
+ * Remove prefixos como 'Lote', 'Lotes', 'Lote Master', 'Palete Atacado', etc. antes do nome do modelo
+ */
+export function stripLotPrefix(title: string | undefined | null): string {
+  if (!title) return '';
+  return title
+    .replace(/^Lotes?\s+(Master\s+|Governamental\s+|Atacado\s+|Oficial\s+|Importado\s+)?/i, '')
+    .replace(/^Paletes?\s+(Atacado\s+)?/i, '')
+    .replace(/\(T\)/gi, '')
+    .trim();
+}
+
 export function getDeviceImageUrl(make?: string, model?: string, deviceType?: string): string {
   const m = `${make || ''} ${model || ''} ${deviceType || ''}`.toLowerCase();
 

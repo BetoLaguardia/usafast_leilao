@@ -27,6 +27,7 @@ import { AuctionLot, GradeType, SystemUser } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
 import { downloadOfficialInvoicePdf } from '../utils/generatePdfInvoice';
 import { isAssurantLot, getAssurantPreviousApprovedBid } from '../utils/assurantUtils';
+import { stripLotPrefix } from '../utils/deviceImages';
 
 interface ClientePageProps {
   currentUser: SystemUser;
@@ -361,14 +362,10 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                   onChange={e => setSelectedAuctionSystemFilter(e.target.value as any)}
                   className="w-full bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 font-bold"
                 >
-                  <option value="all">Todos os Leilões</option>
-                  <option value="VERIZON">★ Leilão VERIZON</option>
-                  <option value="ASSURANT">★ Leilão ASSURANT</option>
-                  <option value="MARKETPLACE_1">★ Marketplace 1</option>
-                  <option value="MARKETPLACE_2">★ Marketplace 2</option>
-                  <option value="MARKETPLACE_3">★ Marketplace 3</option>
+                  <option value="all">Todos os Leilões Oficiais</option>
+                  <option value="VERIZON">⚡ Leilão VERIZON</option>
+                  <option value="ASSURANT">🔹 Leilão ASSURANT</option>
                   <option value="MACBOOKS">💻 Leilão Macbooks</option>
-                  <option value="STOCK_APPLE">🍏 Estoque Pronta Entrega</option>
                 </select>
               </div>
 
@@ -542,7 +539,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                             onClick={() => onSelectLot(lot)}
                             className="text-xs font-bold text-white mt-1 line-clamp-2 cursor-pointer"
                           >
-                            {lot.title}
+                            {stripLotPrefix(lot.title)}
                           </h4>
                           <span className="text-[10px] text-slate-400 block mt-0.5">{lot.auctionHouse}</span>
                         </div>
@@ -622,7 +619,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                                 {lot.modelFamily}
                               </span>
                               <span className="text-[11px] text-slate-300 font-medium line-clamp-1">
-                                {lot.title}
+                                {stripLotPrefix(lot.title)}
                               </span>
                               <div className="flex items-center gap-2 pt-0.5">
                                 <span className="font-mono text-[10px] text-amber-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
@@ -794,7 +791,7 @@ export const ClientePage: React.FC<ClientePageProps> = ({
                     <div className="p-4 sm:p-5 space-y-4 flex-1 flex flex-col justify-between">
                       <div>
                         <h3 className="font-bold text-white text-base leading-snug line-clamp-2">
-                          {lot.title}
+                          {stripLotPrefix(lot.title)}
                         </h3>
 
                         {/* Diagnostic & Technical Spec Badges */}

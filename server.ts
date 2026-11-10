@@ -9,26 +9,42 @@ const STORE_PATH = path.join(process.cwd(), 'auctions_store.json');
 // In-Memory Fast Cache for Instant Zero-Latency Database Queries
 let cachedAuctions: any[] = [];
 
+const BANNED_PATTERNS = /govdeals|copart|liquidation\.com|apple certified/i;
+
+const sanitizeAuctions = (lots: any[]): any[] => {
+  if (!Array.isArray(lots)) return [];
+  return lots.filter(lot => {
+    const house = String(lot.auctionHouse || '');
+    const title = String(lot.title || '');
+    const source = String(lot.sourceType || '');
+    return !BANNED_PATTERNS.test(house) && !BANNED_PATTERNS.test(title) && !BANNED_PATTERNS.test(source);
+  });
+};
+
 // Initialize or Load Persistent Store on Startup
 try {
   if (fs.existsSync(STORE_PATH)) {
     const raw = fs.readFileSync(STORE_PATH, 'utf-8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      cachedAuctions = parsed;
-      console.log(`[Database Engine] Loaded ${cachedAuctions.length} lots from persistent storage on startup.`);
+      cachedAuctions = sanitizeAuctions(parsed);
+      if (cachedAuctions.length === 0) {
+        cachedAuctions = sanitizeAuctions(INITIAL_AUCTIONS);
+      }
+      fs.writeFileSync(STORE_PATH, JSON.stringify(cachedAuctions, null, 2), 'utf-8');
+      console.log(`[Database Engine] Loaded & sanitized ${cachedAuctions.length} lots from persistent storage on startup.`);
     } else {
-      cachedAuctions = INITIAL_AUCTIONS;
-      fs.writeFileSync(STORE_PATH, JSON.stringify(INITIAL_AUCTIONS, null, 2), 'utf-8');
+      cachedAuctions = sanitizeAuctions(INITIAL_AUCTIONS);
+      fs.writeFileSync(STORE_PATH, JSON.stringify(cachedAuctions, null, 2), 'utf-8');
     }
   } else {
-    cachedAuctions = INITIAL_AUCTIONS;
-    fs.writeFileSync(STORE_PATH, JSON.stringify(INITIAL_AUCTIONS, null, 2), 'utf-8');
-    console.log(`[Database Engine] Initialized auctions_store.json with ${INITIAL_AUCTIONS.length} initial lots.`);
+    cachedAuctions = sanitizeAuctions(INITIAL_AUCTIONS);
+    fs.writeFileSync(STORE_PATH, JSON.stringify(cachedAuctions, null, 2), 'utf-8');
+    console.log(`[Database Engine] Initialized auctions_store.json with ${cachedAuctions.length} initial lots.`);
   }
 } catch (e) {
   console.error('[Database Engine] Failed to load store, using default fallback:', e);
-  cachedAuctions = INITIAL_AUCTIONS;
+  cachedAuctions = sanitizeAuctions(INITIAL_AUCTIONS);
 }
 
 async function startServer() {
@@ -72,13 +88,13 @@ async function startServer() {
     try {
       const { auctions } = req.body || {};
       if (Array.isArray(auctions) && auctions.length > 0) {
-        cachedAuctions = auctions;
+        cachedAuctions = sanitizeAuctions(auctions);
         // Asynchronous non-blocking disk persistence
-        fs.writeFile(STORE_PATH, JSON.stringify(auctions, null, 2), 'utf-8', (err) => {
+        fs.writeFile(STORE_PATH, JSON.stringify(cachedAuctions, null, 2), 'utf-8', (err) => {
           if (err) console.error('[Database Engine] Non-blocking file save error:', err);
-          else console.log(`[Database Engine] Persisted ${auctions.length} lots to auctions_store.json`);
+          else console.log(`[Database Engine] Persisted ${cachedAuctions.length} lots to auctions_store.json`);
         });
-        return res.json({ ok: true, count: auctions.length });
+        return res.json({ ok: true, count: cachedAuctions.length });
       }
       return res.status(400).json({ ok: false, error: 'Invalid auctions array' });
     } catch (e: any) {

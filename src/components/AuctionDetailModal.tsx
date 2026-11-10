@@ -3,6 +3,7 @@ import { X, Gavel, MapPin, Download, CheckCircle2, ShieldCheck, Battery, Smartph
 import { AuctionLot } from '../types/auction';
 import { GRADE_EXPLANATIONS } from '../data/auctionsData';
 import { isAssurantLot, getAssurantPreviousApprovedBid } from '../utils/assurantUtils';
+import { stripLotPrefix } from '../utils/deviceImages';
 
 interface AuctionDetailModalProps {
   lot: AuctionLot | null;
@@ -92,11 +93,16 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/70">
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-400 font-bold">
-              LOTE {lot.lotNumber}
+              {lot.lotNumber}
             </span>
             {(lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse) || /verizon/i.test(lot.carrierStatus)) && (
               <span className="px-2.5 py-0.5 rounded bg-red-600 text-white font-black text-[10px] tracking-wider uppercase shadow-md">
-                VERIZON OFICIAL
+                VERIZON
+              </span>
+            )}
+            {(lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse)) && (
+              <span className="px-2.5 py-0.5 rounded bg-blue-600 text-white font-black text-[10px] tracking-wider uppercase shadow-md">
+                ASSURANT
               </span>
             )}
             <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
@@ -231,7 +237,7 @@ export const AuctionDetailModal: React.FC<AuctionDetailModalProps> = ({
             <div className="lg:col-span-7 space-y-4">
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-snug">
-                  {lot.title}
+                  {stripLotPrefix(lot.title)}
                 </h1>
                 <p className="text-slate-400 text-xs mt-1.5 leading-relaxed">
                   {lot.description}

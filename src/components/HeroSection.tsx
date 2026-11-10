@@ -39,7 +39,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
             {/* Subtitle */}
             <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed">
-              Arremate paletes e unidades avulsas de iPhones direto das maiores liquidações dos EUA (Assurant, Diversos Marketplaces USA, Leilões MACBOOKS, Verizon e AT&T Carrier Returns). Com manifestos completos de IMEI, laudo de 30 pontos e despacho via galpão de Miami.
+              Arremate paletes e unidades avulsas de iPhones direto dos maiores leilões com planilhas e manifestos auditados dos EUA (Verizon e Assurant Wholesale Hubs). Com manifestos completos de IMEI, laudo de 30 pontos e despacho via galpão de Miami.
             </p>
 
             {/* TWO PROMINENT LINKS TO "NOSSO SISTEMA DE LEILÕES" */}

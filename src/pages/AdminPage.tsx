@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { getDeviceImageUrl } from '../utils/deviceImages';
+import { getDeviceImageUrl, stripLotPrefix } from '../utils/deviceImages';
 import { fetchLivePtaxRate } from '../utils/ptaxService';
 import { 
   Upload, 
@@ -86,6 +86,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const [verizonUnitRate, setVerizonUnitRate] = useState<number>(85);
   const [verizonExpandedLot, setVerizonExpandedLot] = useState<string | null>(null);
   const [replaceExistingLots, setReplaceExistingLots] = useState(false);
+  const [verizonImportMode, setVerizonImportMode] = useState<'individual' | 'grouped'>('individual');
 
   // ----------------------------------------------------
   // ASSURANT AUCTION ENGINE (+ $5 USD PER UNIT ADJUSTMENT)
@@ -189,7 +190,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     discardedLockedCount: 0,
     discardedNonAppleCount: 0
   });
-  const [stockAppleGroupMode, setStockAppleGroupMode] = useState<'grouped' | 'individual'>('grouped');
+  const [stockAppleGroupMode, setStockAppleGroupMode] = useState<'grouped' | 'individual'>('individual');
   const [stockAppleFilterType, setStockAppleFilterType] = useState<'ALL' | 'IPHONE' | 'IPAD' | 'WATCH' | 'DISCARDED_LOCKED'>('ALL');
   const [stockAppleSearch, setStockAppleSearch] = useState('');
   const [stockApplePage, setStockApplePage] = useState(1);
@@ -1861,7 +1862,7 @@ $285.00
             setStockAppleGroupMode('individual');
             const { audit } = processStockAppleRows(rows, true);
             showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-          } else if (/assurant/i.test(file.name)) {
+          } else if (/assurant|b-stock|stocklist|stock_list|recirq|wesell|mannapov/i.test(file.name)) {
             setPresetFormat('ASSURANT');
             setStockAppleGroupMode('individual');
             const { audit } = processStockAppleRows(rows, true);
@@ -1955,7 +1956,7 @@ $285.00
           setStockAppleGroupMode('individual');
           const { audit } = processStockAppleRows(rawJson, true);
           showNotice(`Planilha ${presetFormat} detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-        } else if (/assurant/i.test(file.name)) {
+        } else if (/assurant|b-stock|stocklist|stock_list|recirq|wesell|mannapov/i.test(file.name)) {
           setPresetFormat('ASSURANT');
           setStockAppleGroupMode('individual');
           const { audit } = processStockAppleRows(rawJson, true);
@@ -2173,78 +2174,176 @@ $285.00
     }
   };
 
-  // Publish VERIZON grouped lots to store and localStorage
+  // Publish VERIZON lots (Individual line-by-line or Grouped by Lot #)
   const handleApplyVerizonImport = () => {
-    if (verizonGroupedLots.length === 0) {
-      showNotice('Nenhum lote VERIZON agrupado para publicar.', 'error');
+    if (verizonGroupedLots.length === 0 && parsedPreviewRows.length === 0) {
+      showNotice('Nenhum lote VERIZON para publicar.', 'error');
       return;
     }
 
     try {
-      const newLots: AuctionLot[] = verizonGroupedLots.map((g, idx) => {
-        const isSamsung = /samsung|galaxy|fold|flip/i.test(g.primaryModel) || /samsung/i.test(g.oem);
-        const imageUrl = isSamsung
-          ? '/images/samsung_galaxy_lot_1793851025604.jpg'
-          : g.totalQty > 8
-            ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
-            : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+      let newLots: AuctionLot[] = [];
 
-        const galleryImages = [
-          imageUrl,
-          '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-          '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-        ];
+      if (verizonImportMode === 'individual' && parsedPreviewRows.length > 0) {
+        newLots = parsedPreviewRows.map((r, idx) => {
+          const lotNum = String(r['Lot #'] || r['Lot#'] || r['Lot'] || r['lotNumber'] || r['Item #'] || r['Item'] || r['ID'] || `VZ-${idx + 1}`).trim();
+          const oem = String(r['OEM'] || r['oem'] || 'Apple').trim();
+          const primaryModel = String(r['Model'] || r['model'] || 'Smartphone').trim();
+          const cap = String(r['Capacity'] || r['capacity'] || '128GB').trim();
+          const color = String(r['Color'] || r['color'] || 'Black').trim();
+          const gradeRaw = String(r['Grade'] || r['grade'] || 'C(T)').trim();
+          const mappedGrade = mapVerizonGrade(gradeRaw);
+          const q = parseInt(String(r['Qty'] || r['qty'] || 1), 10) || 1;
 
-        const primaryStorage = g.uniqueCapacities.length > 0
-          ? g.uniqueCapacities.slice(0, 2).join(' / ')
-          : '128GB';
+          const isSamsung = /samsung|galaxy|fold|flip/i.test(primaryModel) || /samsung/i.test(oem);
+          const imageUrl = isSamsung
+            ? '/images/samsung_galaxy_lot_1793851025604.jpg'
+            : getDeviceImageUrl(oem, primaryModel, 'iPhone');
 
-        return {
-          id: `vz-lot-${Date.now()}-${idx}`,
-          lotNumber: g.lotNumber,
-          title: g.title,
-          modelFamily: g.primaryModel,
-          oemBrand: g.oem,
-          quantity: g.totalQty,
-          grade: g.mappedGrade,
-          primaryStorage,
-          colorHighlights: g.uniqueColors.slice(0, 3),
-          batteryHealthRange: '84% - 100% (Testado Verizon)',
-          carrierStatus: 'Verizon Clean / Desbloqueado Global',
-          imeiStatus: 'Clean ESN / 100% Verificado',
-          auctionHouse: 'Verizon Direct Liquidation',
-          location: 'Dallas, TX / Miami Hub',
-          startingBidUsd: g.calculatedStartingBidUsd,
-          currentBidUsd: g.calculatedCurrentBidUsd,
-          reservePriceMet: true,
-          estimatedBrazilRetailBrl: g.calculatedRetailBrl,
-          totalBidsCount: Math.floor(Math.random() * 14) + 2,
-          endTime: g.parsedEndTime,
-          imageUrl,
-          galleryImages,
-          description: `Lote oficial do padrão VERIZON contendo ${g.totalQty} aparelho(s). Fontes de estoque: ${g.uniqueSources.join(', ') || 'Carrier Returns'}. Classificação técnica ${g.gradeRaw}.`,
-          diagnosticReport: {
-            faceId: true,
-            trueTone: true,
-            camerasPassed: true,
-            batteryTested: true,
-            cleanEsn: true,
-            mdmFree: true
-          },
-          manifest: g.manifest,
-          bidsHistory: [
-            {
-              id: `bid-vz-${idx}`,
-              bidderName: 'Licitante EUA Inicial',
-              amountUsd: g.calculatedCurrentBidUsd,
-              timestamp: 'Início do Leilão'
-            }
-          ],
-          originalListingUrl: g.url,
-          listingUrl: g.url,
-          sourceType: 'VERIZON'
-        };
-      });
+          const isPremium = /fold|ultra|pro max/i.test(primaryModel);
+          const isBudget = /a1|a2|a0/i.test(primaryModel);
+          const perUnit = isPremium ? verizonUnitRate * 1.6 : isBudget ? verizonUnitRate * 0.6 : verizonUnitRate;
+          const currentBidUsd = Math.max(80, Math.round(q * perUnit));
+          const startingBidUsd = Math.round(currentBidUsd * 0.75);
+          const estimatedBrazilRetailBrl = Math.round(currentBidUsd * usdRate * 1.55);
+
+          const rawTitle = `${oem} ${primaryModel} ${cap} ${color} - Grade ${mappedGrade}`;
+          const cleanTitle = stripLotPrefix(cleanLotTitle(rawTitle));
+
+          return {
+            id: `vz-ind-${Date.now()}-${idx}`,
+            lotNumber: `${lotNum}-${idx + 1}`,
+            title: cleanTitle,
+            modelFamily: primaryModel,
+            oemBrand: oem,
+            quantity: q,
+            grade: mappedGrade,
+            primaryStorage: cap,
+            colorHighlights: [color],
+            batteryHealthRange: '84% - 100% (Testado Verizon)',
+            carrierStatus: 'Verizon Clean / Desbloqueado Global',
+            imeiStatus: 'Clean ESN / 100% Verificado',
+            auctionHouse: 'Verizon Wholesale Liquidation',
+            location: 'Dallas, TX / Miami Hub',
+            startingBidUsd,
+            currentBidUsd,
+            reservePriceMet: true,
+            estimatedBrazilRetailBrl,
+            totalBidsCount: Math.floor(Math.random() * 12) + 1,
+            endTime: parseAuctionEndTime(r['End Date'] || r['endDate'], r['End Time'] || r['endTime']),
+            imageUrl,
+            galleryImages: [
+              imageUrl,
+              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+            ],
+            description: `Aparelho oficial do leilão VERIZON: ${primaryModel} ${cap} ${color}. Classificação técnica ${gradeRaw} (Mapeada: Grade ${mappedGrade}). IMEI Clean ESN auditado.`,
+            diagnosticReport: {
+              faceId: true,
+              trueTone: true,
+              camerasPassed: true,
+              batteryTested: true,
+              cleanEsn: true,
+              mdmFree: true
+            },
+            manifest: [
+              {
+                id: `dev-vz-${lotNum}-${idx}`,
+                model: primaryModel,
+                storage: cap,
+                color,
+                grade: mappedGrade,
+                batteryHealth: 88 + (idx % 12),
+                imeiMasked: `359820******${String(100 + (idx * 17) % 899)}`,
+                carrierStatus: 'Verizon Clean / Unlocked',
+                icloudStatus: 'Clean / FMI OFF',
+                screenCondition: `Conforme Grade Verizon ${mappedGrade}`,
+                housingCondition: `Conforme Grade Verizon ${mappedGrade}`,
+                partNumber: String(r['Part #'] || r['partNumber'] || '').trim(),
+                inventorySource: 'Verizon Direct Return',
+                itemDescription: String(r['Item Description'] || r['itemDescription'] || '').trim(),
+                qty: q
+              }
+            ],
+            bidsHistory: [
+              {
+                id: `bid-vz-ind-${idx}`,
+                bidderName: 'Licitante EUA Inicial',
+                amountUsd: currentBidUsd,
+                timestamp: 'Início do Leilão'
+              }
+            ],
+            originalListingUrl: String(r['URL'] || r['url'] || '').trim(),
+            listingUrl: String(r['URL'] || r['url'] || '').trim(),
+            sourceType: 'VERIZON' as AuctionLot['sourceType']
+          };
+        });
+      } else {
+        newLots = verizonGroupedLots.map((g, idx) => {
+          const isSamsung = /samsung|galaxy|fold|flip/i.test(g.primaryModel) || /samsung/i.test(g.oem);
+          const imageUrl = isSamsung
+            ? '/images/samsung_galaxy_lot_1793851025604.jpg'
+            : g.totalQty > 8
+              ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
+              : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+
+          const galleryImages = [
+            imageUrl,
+            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
+            '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
+          ];
+
+          const primaryStorage = g.uniqueCapacities.length > 0
+            ? g.uniqueCapacities.slice(0, 2).join(' / ')
+            : '128GB';
+
+          return {
+            id: `vz-lot-${Date.now()}-${idx}`,
+            lotNumber: g.lotNumber,
+            title: g.title,
+            modelFamily: g.primaryModel,
+            oemBrand: g.oem,
+            quantity: g.totalQty,
+            grade: g.mappedGrade,
+            primaryStorage,
+            colorHighlights: g.uniqueColors.slice(0, 3),
+            batteryHealthRange: '84% - 100% (Testado Verizon)',
+            carrierStatus: 'Verizon Clean / Desbloqueado Global',
+            imeiStatus: 'Clean ESN / 100% Verificado',
+            auctionHouse: 'Verizon Wholesale Liquidation',
+            location: 'Dallas, TX / Miami Hub',
+            startingBidUsd: g.calculatedStartingBidUsd,
+            currentBidUsd: g.calculatedCurrentBidUsd,
+            reservePriceMet: true,
+            estimatedBrazilRetailBrl: g.calculatedRetailBrl,
+            totalBidsCount: Math.floor(Math.random() * 14) + 2,
+            endTime: g.parsedEndTime,
+            imageUrl,
+            galleryImages,
+            description: `Lote oficial do padrão VERIZON contendo ${g.totalQty} aparelho(s). Fontes de estoque: ${g.uniqueSources.join(', ') || 'Carrier Returns'}. Classificação técnica ${g.gradeRaw}.`,
+            diagnosticReport: {
+              faceId: true,
+              trueTone: true,
+              camerasPassed: true,
+              batteryTested: true,
+              cleanEsn: true,
+              mdmFree: true
+            },
+            manifest: g.manifest,
+            bidsHistory: [
+              {
+                id: `bid-vz-${idx}`,
+                bidderName: 'Licitante EUA Inicial',
+                amountUsd: g.calculatedCurrentBidUsd,
+                timestamp: 'Início do Leilão'
+              }
+            ],
+            originalListingUrl: g.url,
+            listingUrl: g.url,
+            sourceType: 'VERIZON' as AuctionLot['sourceType']
+          };
+        });
+      }
 
       const finalLots = replaceExistingLots
         ? newLots
@@ -2393,16 +2492,16 @@ $285.00
       },
       {
         'Lote': 'US-99101-DAL',
-        'Titulo': 'Lote 5x iPhone 15 Pro 128GB Grade A Natural Titanium',
+        'Titulo': '5x iPhone 15 Pro 128GB Grade DNB Natural Titanium',
         'Modelo': 'iPhone 15 Pro',
         'Quantidade': 5,
-        'Grade': 'Grade A',
+        'Grade': 'DNB',
         'Armazenamento': '128GB',
         'Saude Bateria': '88% - 94%',
         'Lance Inicial USD': 2200,
         'Lance Atual USD': 2800,
         'Revenda Brasil BRL': 26000,
-        'Casa de Leilao': 'Liquidation.com Enterprise',
+        'Casa de Leilao': 'Verizon Direct US Liquidation',
         'Localizacao': 'Dallas, TX'
       },
       {
@@ -2416,7 +2515,7 @@ $285.00
         'Lance Inicial USD': 650,
         'Lance Atual USD': 890,
         'Revenda Brasil BRL': 9200,
-        'Casa de Leilao': 'Apple Certified Wholesale',
+        'Casa de Leilao': 'Assurant Liquidation Hub',
         'Localizacao': 'Miami, FL'
       }
     ];
@@ -3278,78 +3377,6 @@ $285.00
 
                   <button
                     type="button"
-                    onClick={() => setPresetFormat('STOCK_APPLE')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'STOCK_APPLE'
-                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25 ring-1 ring-emerald-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>🍏 Importador Pronta Entrega (Texto / CSV)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('MACBOOKS');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MACBOOKS'
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25 ring-1 ring-purple-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>💻 Importador Macbooks (Texto com Margem)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('MARKETPLACE_1');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_1'
-                        ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25 ring-1 ring-sky-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>🛒 Marketplace 1 - RecirQ (CSV / XLSX)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('MARKETPLACE_2');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_2'
-                        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/25 ring-1 ring-cyan-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>🛒 Marketplace 2 - WeSell (CSV / XLSX)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('MARKETPLACE_3');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'MARKETPLACE_3'
-                        ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-1 ring-teal-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>🛒 Marketplace 3 - Mannapov (CSV / XLSX)</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => setPresetFormat('GENERIC')}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
                       presetFormat === 'GENERIC'
@@ -3357,7 +3384,7 @@ $285.00
                         : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                     }`}
                   >
-                    <span>Padrão Custom / Genérico</span>
+                    <span>Importador Planilha Genérica (CSV / XLSX)</span>
                   </button>
                 </div>
               </div>
@@ -3983,7 +4010,7 @@ $285.00
                     className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Publicar {verizonGroupedLots.length} Lotes no Catálogo & Painel</span>
+                    <span>Publicar {verizonImportMode === 'individual' ? `${(parsedPreviewRows.length || verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0)).toLocaleString()} Modelos Individuais` : `${verizonGroupedLots.length} Lotes`} no Catálogo</span>
                   </button>
                 </div>
               </div>
@@ -4010,7 +4037,42 @@ $285.00
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Modo de Publicação no Catálogo:</label>
+                  <label className="text-xs font-bold text-slate-300 block">Modo de Consolidação de Lotes:</label>
+                  <div className="flex flex-col gap-1.5 text-xs">
+                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      verizonImportMode === 'individual'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="vzMode"
+                        checked={verizonImportMode === 'individual'}
+                        onChange={() => setVerizonImportMode('individual')}
+                        className="accent-emerald-400"
+                      />
+                      <span>Lotes Individuais por Linha ({(parsedPreviewRows.length || verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0)).toLocaleString()} modelos)</span>
+                    </label>
+
+                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      verizonImportMode === 'grouped'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="vzMode"
+                        checked={verizonImportMode === 'grouped'}
+                        onChange={() => setVerizonImportMode('grouped')}
+                        className="accent-emerald-400"
+                      />
+                      <span>Consolidar por Lot # ({verizonGroupedLots.length} lotes)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-slate-300 block">Configurações Adicionais:</span>
                   <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900 p-2.5 rounded-lg border border-slate-800 hover:border-slate-700">
                     <input
                       type="checkbox"
@@ -4018,20 +4080,8 @@ $285.00
                       onChange={e => setReplaceExistingLots(e.target.checked)}
                       className="accent-amber-400 rounded w-4 h-4"
                     />
-                    <span>Substituir leilões mock pelos 50 lotes oficiais VERIZON</span>
+                    <span>Substituir leilões anteriores</span>
                   </label>
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="text-xs font-bold text-slate-300 block">Resumo do Catálogo VERIZON:</span>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
-                      {verizonGroupedLots.length} Lotes
-                    </span>
-                    <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-emerald-400 font-mono font-bold">
-                      {verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0).toLocaleString()} Aparelhos
-                    </span>
-                  </div>
                 </div>
               </div>
 

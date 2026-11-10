@@ -123,7 +123,7 @@ export const QuemSomosPage: React.FC<QuemSomosPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-slate-300">
           <div className="space-y-2">
-            <span className="font-semibold text-white block text-sm">1. Equipe Técnica Apple Certified</span>
+            <span className="font-semibold text-white block text-sm">1. Equipe Técnica Especializada Apple</span>
             <p className="text-slate-400 leading-relaxed">
               Técnicos treinados realizam a triagem física de telas, integridade de bateria, ausência de contas iCloud ativas e validação de peças 100% originais.
             </p>

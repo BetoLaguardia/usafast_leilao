@@ -4,6 +4,7 @@ import { HeroSection } from './components/HeroSection';
 import { AuctionCard } from './components/AuctionCard';
 import { AuctionDetailModal } from './components/AuctionDetailModal';
 import { AuctionSystemModal } from './components/AuctionSystemModal';
+import { ModelCarousel } from './components/ModelCarousel';
 import { GradingGuideModal } from './components/GradingGuideModal';
 import { ImportCalculatorModal } from './components/ImportCalculatorModal';
 import { QuemSomosPage } from './pages/QuemSomosPage';
@@ -16,6 +17,7 @@ import { AuctionLot, GradeType, SystemUser, AdminOffer } from './types/auction';
 import { apiService } from './services/apiService';
 import { Language, TRANSLATIONS } from './utils/i18n';
 import { fetchLivePtaxRate } from './utils/ptaxService';
+import { stripLotPrefix } from './utils/deviceImages';
 import { 
   Search, 
   Filter, 
@@ -34,7 +36,12 @@ import {
   Sparkles,
   UserCheck,
   Download,
-  Server
+  Server,
+  LayoutGrid,
+  CheckSquare,
+  Square,
+  Smartphone,
+  Clock
 } from 'lucide-react';
 
 export default function App() {
@@ -46,14 +53,32 @@ export default function App() {
     try {
       const saved = localStorage.getItem('us_iphone_auctions_v1');
       if (saved) {
-        const parsed = JSON.parse(saved);
+        let parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          // Exclude anything that is not a real spreadsheet auction (e.g. GovDeals, Copart, Liquidation.com, Apple Certified, etc.)
+          parsed = parsed.filter((a: any) => {
+            const house = (a.auctionHouse || '').toLowerCase();
+            const title = (a.title || '').toLowerCase();
+            const src = (a.sourceType || '').toLowerCase();
+            if (house.includes('govdeals') || title.includes('govdeals') || src.includes('govdeals')) return false;
+            if (house.includes('copart') || title.includes('copart') || src.includes('copart')) return false;
+            if (house.includes('liquidation.com') || title.includes('liquidation.com')) return false;
+            if (house.includes('apple certified') || title.includes('apple certified')) return false;
+            if (house.includes('marketplace') || title.includes('marketplace')) return false;
+            if (house.includes('pronta entrega') || title.includes('pronta entrega')) return false;
+            return true;
+          });
+          // Sanitize titles to remove 'Lote' prefix
+          parsed = parsed.map((a: any) => ({
+            ...a,
+            title: stripLotPrefix(a.title)
+          }));
           const hasAssurant = parsed.some((a: any) => a.sourceType === 'ASSURANT');
           if (!hasAssurant) {
             const defaultAssurant = INITIAL_AUCTIONS.filter(a => a.sourceType === 'ASSURANT');
             return [...defaultAssurant, ...parsed];
           }
-          return parsed;
+          if (parsed.length > 0) return parsed;
         }
       }
     } catch (e) {
@@ -222,6 +247,10 @@ export default function App() {
   const [filterAuctionHouse, setFilterAuctionHouse] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'endingSoon' | 'priceAsc' | 'priceDesc' | 'profitDesc' | 'mostBids'>('endingSoon');
 
+  // View Mode in Active Auctions catalog (List vs Cards)
+  const [auctionsViewMode, setAuctionsViewMode] = useState<'list' | 'cards'>('list');
+  const [selectedLotIds, setSelectedLotIds] = useState<string[]>([]);
+
   // Quick Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -255,17 +284,24 @@ export default function App() {
 
   useEffect(() => {
     console.log('[App.tsx] Fetching initial auctions from /api/auctions...');
+    const sanitizeLots = (lots: any[]): AuctionLot[] => {
+      const banned = /govdeals|copart|liquidation\.com|apple certified|marketplace|pronta entrega/i;
+      return (lots || [])
+        .filter(l => !banned.test(l.auctionHouse || '') && !banned.test(l.title || '') && !banned.test(l.sourceType || ''))
+        .map(l => ({ ...l, title: stripLotPrefix(l.title) }));
+    };
+
     fetch('/api/auctions')
       .then(res => res.json())
       .then(data => {
         if (!hasLocalUpdateRef.current && data && Array.isArray(data.auctions) && data.auctions.length > 0) {
-          const backendLots: AuctionLot[] = data.auctions;
+          const backendLots: AuctionLot[] = sanitizeLots(data.auctions);
           let localLots: AuctionLot[] = [];
           try {
             const saved = localStorage.getItem('us_iphone_auctions_v1');
             if (saved) {
               const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed)) localLots = parsed;
+              if (Array.isArray(parsed)) localLots = sanitizeLots(parsed);
             }
           } catch (e) {}
 
@@ -277,7 +313,7 @@ export default function App() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ auctions: localLots })
             }).catch(() => {});
-          } else {
+          } else if (backendLots.length > 0) {
             console.log(`[App.tsx] Loaded ${backendLots.length} lots from backend /api/auctions`);
             setAuctions(backendLots);
             try {
@@ -423,28 +459,89 @@ export default function App() {
     setIsCalculatorModalOpen(true);
   };
 
+  // Dynamic list of all imported models for the selected auction (or all auctions)
+  const availableImportedModels = useMemo(() => {
+    const sourceLots = filterAuctionHouse === 'all'
+      ? auctions
+      : filterAuctionHouse === 'VERIZON'
+        ? auctions.filter(a => a.sourceType === 'VERIZON' || /verizon/i.test(a.auctionHouse))
+        : filterAuctionHouse === 'ASSURANT'
+          ? auctions.filter(a => a.sourceType === 'ASSURANT' || /assurant/i.test(a.auctionHouse))
+          : auctions.filter(a => a.auctionHouse === filterAuctionHouse);
+
+    const modelMap = new Map<string, { model: string; count: number; totalUnits: number }>();
+
+    sourceLots.forEach(lot => {
+      const house = (lot.auctionHouse || '').toLowerCase();
+      const title = (lot.title || '').toLowerCase();
+      if (house.includes('govdeals') || title.includes('govdeals')) return;
+      if (house.includes('copart') || title.includes('copart')) return;
+      if (house.includes('liquidation.com') || title.includes('liquidation.com')) return;
+      if (house.includes('apple certified') || title.includes('apple certified')) return;
+      if (house.includes('marketplace') || title.includes('marketplace')) return;
+      if (house.includes('pronta entrega') || title.includes('pronta entrega')) return;
+
+      const m = (lot.modelFamily || 'Outros').trim();
+      const current = modelMap.get(m) || { model: m, count: 0, totalUnits: 0 };
+      current.count += 1;
+      current.totalUnits += (lot.quantity || 1);
+      modelMap.set(m, current);
+    });
+
+    return Array.from(modelMap.values()).sort((a, b) => b.totalUnits - a.totalUnits);
+  }, [auctions, filterAuctionHouse]);
+
+  // Selection handlers for List Mode
+  const handleToggleSelectLot = (lotId: string) => {
+    setSelectedLotIds(prev =>
+      prev.includes(lotId) ? prev.filter(id => id !== lotId) : [...prev, lotId]
+    );
+  };
+
+  const handleSelectAllOnPage = () => {
+    const pageLotIds = paginatedAuctions.map(l => l.id);
+    const allSelected = pageLotIds.length > 0 && pageLotIds.every(id => selectedLotIds.includes(id));
+    if (allSelected) {
+      setSelectedLotIds(prev => prev.filter(id => !pageLotIds.includes(id)));
+    } else {
+      setSelectedLotIds(prev => Array.from(new Set([...prev, ...pageLotIds])));
+    }
+  };
+
+  const handleOpenCalculatorForSelected = () => {
+    const selectedLotsObjects = auctions.filter(a => selectedLotIds.includes(a.id));
+    if (selectedLotsObjects.length === 0) return;
+    const totalUnits = selectedLotsObjects.reduce((acc, l) => acc + (l.quantity || 1), 0);
+    const avgPriceUsd = Math.round(
+      selectedLotsObjects.reduce((acc, l) => acc + l.currentBidUsd, 0) / (selectedLotsObjects.length || 1)
+    );
+    setCalculatorInitData({
+      priceUsd: avgPriceUsd,
+      units: totalUnits
+    });
+    setIsCalculatorModalOpen(true);
+  };
+
   // Filtered & Sorted Auctions
   const filteredAuctions = useMemo(() => {
     return auctions.filter(lot => {
-      // 1. Sanitize or exclude items containing (T)
-      const cleanGrade = (lot.grade || '').replace(/\(T\)/gi, '').trim();
-      if (lot.grade.includes('(T)') && !['DNA', 'DNB', 'DNC', 'DND', 'Grade A+', 'Grade A', 'Grade B', 'Grade C'].includes(cleanGrade)) {
-        return false;
-      }
+      // 0. Exclude non-spreadsheet auctions (GovDeals, Copart, Liquidation.com, Apple Certified, etc.)
+      const house = (lot.auctionHouse || '').toLowerCase();
+      const title = (lot.title || '').toLowerCase();
+      if (house.includes('govdeals') || title.includes('govdeals')) return false;
+      if (house.includes('copart') || title.includes('copart')) return false;
+      if (house.includes('liquidation.com') || title.includes('liquidation.com')) return false;
+      if (house.includes('apple certified') || title.includes('apple certified')) return false;
+      if (house.includes('marketplace') || title.includes('marketplace')) return false;
+      if (house.includes('pronta entrega') || title.includes('pronta entrega')) return false;
 
-      // 2. Verizon strict rule: When Verizon, ONLY show DNA, DNB, DNC, DND
-      const isVerizon = lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse) || /verizon/i.test(lot.carrierStatus);
-      if (isVerizon) {
-        const allowedVerizonGrades = ['DNA', 'DNB', 'DNC', 'DND'];
-        if (!allowedVerizonGrades.includes(cleanGrade)) {
-          return false;
-        }
-      }
+      // 1. Clean grade representation
+      const cleanGrade = (lot.grade || '').replace(/\(T\)/gi, '').trim();
 
       // Search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesTitle = lot.title.toLowerCase().includes(query);
+        const matchesTitle = stripLotPrefix(lot.title).toLowerCase().includes(query) || lot.title.toLowerCase().includes(query);
         const matchesLotNum = lot.lotNumber.toLowerCase().includes(query);
         const matchesModel = lot.modelFamily.toLowerCase().includes(query);
         const matchesLoc = lot.location.toLowerCase().includes(query);
@@ -476,6 +573,7 @@ export default function App() {
 
       // Filter by Auction House / Source
       if (filterAuctionHouse === 'VERIZON') {
+        const isVerizon = lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse) || /verizon/i.test(lot.carrierStatus);
         if (!isVerizon) return false;
       } else if (filterAuctionHouse === 'ASSURANT') {
         const isAssurant = lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse);
@@ -511,7 +609,7 @@ export default function App() {
 
   // Pagination State for Instant Loading & Smooth UI
   const [auctionsPage, setAuctionsPage] = useState<number>(1);
-  const ITEMS_PER_PAGE = 12;
+  const ITEMS_PER_PAGE = 15;
 
   // Reset page when filters change
   useEffect(() => {
@@ -631,54 +729,30 @@ export default function App() {
               </div>
             )}
 
-            {/* Destaques de Leilões na Home */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
-                    OPORTUNIDADES DE MAIOR MARGEM
-                  </span>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    Leilões Mais Disputados dos EUA
-                  </h2>
-                </div>
-                <button
-                  onClick={() => setCurrentPage('leiloes')}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-2 self-start sm:self-auto"
-                >
-                  <span>Ver Todos os {auctions.length} Leilões</span>
-                  <ArrowRight className="w-4 h-4 text-amber-400" />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {auctions.slice(0, 3).map(lot => (
-                  <AuctionCard
-                    key={lot.id}
-                    lot={lot}
-                    onSelectLot={lotItem => {
-                      if (!isClientAuthenticated && !isAdminAuthenticated) {
-                        setCurrentPage('cliente');
-                        showToast('🔒 Para acessar os leilões e dar lances, faça seu login ou cadastre-se.');
-                      } else {
-                        setSelectedLotForDetail(lotItem);
-                      }
-                    }}
-                    onQuickBid={lotItem => {
-                      if (!isClientAuthenticated && !isAdminAuthenticated) {
-                        setCurrentPage('cliente');
-                        showToast('🔒 Para dar lances nos leilões, faça seu login ou cadastre-se.');
-                      } else {
-                        setSelectedLotForDetail(lotItem);
-                      }
-                    }}
-                    onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
-                    currency={currency}
-                    usdRate={usdRate}
-                  />
-                ))}
-              </div>
-            </section>
+            {/* Destaques de Leilões em Carrossel na Home */}
+            <ModelCarousel
+              auctions={auctions}
+              usdRate={usdRate}
+              currency={currency}
+              onSelectLot={lotItem => {
+                if (!isClientAuthenticated && !isAdminAuthenticated) {
+                  setCurrentPage('cliente');
+                  showToast('🔒 Para acessar os leilões e dar lances, faça seu login ou cadastre-se.');
+                } else {
+                  setSelectedLotForDetail(lotItem);
+                }
+              }}
+              onQuickBid={lotItem => {
+                if (!isClientAuthenticated && !isAdminAuthenticated) {
+                  setCurrentPage('cliente');
+                  showToast('🔒 Para dar lances nos leilões, faça seu login ou cadastre-se.');
+                } else {
+                  setSelectedLotForDetail(lotItem);
+                }
+              }}
+              onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
+              onViewAllAuctions={() => setCurrentPage('leiloes')}
+            />
 
             {/* Como Funciona na Home */}
             <section className="bg-slate-950 border-t border-slate-800 py-16">
@@ -753,13 +827,13 @@ export default function App() {
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold text-amber-400 mb-1">
                   <Gavel className="w-4 h-4" />
-                  <span>CATÁLOGO COMPLETO DE LEILÕES DOS EUA</span>
+                  <span>CATÁLOGO OFICIAL DE LEILÕES DOS EUA</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                  Lotes de iPhones Disponíveis para Arrematação
+                  Modelos de iPhones Disponíveis para Arrematação
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-xl">
-                  Filtragem por modelo, grade, capacidade e leilões americanos.
+                  Filtragem oficial por leilão (Verizon e Assurant), modelos importados, grade técnica e capacidade.
                 </p>
               </div>
 
@@ -821,16 +895,19 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Filter Rows: Leilão, Grade, Capacidade */}
-              <div className="space-y-3 pt-3 border-t border-slate-800/80 text-xs">
+              {/* Filter Rows: Leilão, Modelos Importados, Grade, Capacidade */}
+              <div className="space-y-3.5 pt-3 border-t border-slate-800/80 text-xs">
                 {/* Row 1: Leilão */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                  <span className="text-slate-400 font-semibold w-24 shrink-0 flex items-center gap-1">
                     <Gavel className="w-3.5 h-3.5 text-amber-400" />
                     {t.auctionFilter}
                   </span>
                   <button
-                    onClick={() => setFilterAuctionHouse('all')}
+                    onClick={() => {
+                      setFilterAuctionHouse('all');
+                      setFilterModel('all');
+                    }}
                     className={`px-3 py-1 rounded-lg font-medium transition-colors ${
                       filterAuctionHouse === 'all'
                         ? 'bg-amber-400 text-slate-950 font-bold'
@@ -841,7 +918,10 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setFilterAuctionHouse(filterAuctionHouse === 'VERIZON' ? 'all' : 'VERIZON')}
+                    onClick={() => {
+                      setFilterAuctionHouse(filterAuctionHouse === 'VERIZON' ? 'all' : 'VERIZON');
+                      setFilterModel('all');
+                    }}
                     className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
                       filterAuctionHouse === 'VERIZON'
                         ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-2 ring-red-400'
@@ -852,7 +932,10 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setFilterAuctionHouse(filterAuctionHouse === 'ASSURANT' ? 'all' : 'ASSURANT')}
+                    onClick={() => {
+                      setFilterAuctionHouse(filterAuctionHouse === 'ASSURANT' ? 'all' : 'ASSURANT');
+                      setFilterModel('all');
+                    }}
                     className={`px-3 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
                       filterAuctionHouse === 'ASSURANT'
                         ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-400'
@@ -862,25 +945,91 @@ export default function App() {
                     <span>🔹 {t.assurantBadge}</span>
                   </button>
 
-                  {/* Dynamic auction house buttons */}
-                  {Array.from(new Set(auctions.map(a => a.auctionHouse))).filter(h => h && !/verizon/i.test(h) && !/assurant/i.test(h)).slice(0, 5).map(house => (
-                    <button
-                      key={house}
-                      onClick={() => setFilterAuctionHouse(filterAuctionHouse === house ? 'all' : house)}
-                      className={`px-3 py-1 rounded-lg font-medium transition-colors ${
-                        filterAuctionHouse === house
-                          ? 'bg-slate-200 text-slate-950 font-bold'
-                          : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
-                      }`}
-                    >
-                      {house.length > 22 ? house.slice(0, 20) + '...' : house}
-                    </button>
-                  ))}
+                  {/* Dynamic auction house buttons (excluding non-auctions) */}
+                  {Array.from(new Set(auctions.map(a => a.auctionHouse)))
+                    .filter(h => h && 
+                      !/verizon/i.test(h) && 
+                      !/assurant/i.test(h) && 
+                      !/liquidation\.com/i.test(h) && 
+                      !/apple certified/i.test(h) && 
+                      !/marketplace/i.test(h) && 
+                      !/pronta entrega/i.test(h) && 
+                      !/stock/i.test(h)
+                    )
+                    .slice(0, 5)
+                    .map(house => (
+                      <button
+                        key={house}
+                        onClick={() => {
+                          setFilterAuctionHouse(filterAuctionHouse === house ? 'all' : house);
+                          setFilterModel('all');
+                        }}
+                        className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                          filterAuctionHouse === house
+                            ? 'bg-slate-200 text-slate-950 font-bold'
+                            : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        {house.length > 22 ? house.slice(0, 20) + '...' : house}
+                      </button>
+                    ))}
                 </div>
 
-                {/* Row 2: Grade */}
+                {/* Row 2: Modelos Importados por Leilão */}
+                <div className="space-y-1.5 pt-1 border-t border-slate-800/40">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>
+                        Modelos Importados {filterAuctionHouse === 'VERIZON' ? '(Verizon)' : filterAuctionHouse === 'ASSURANT' ? '(Assurant)' : '(Todos os Leilões)'}:
+                      </span>
+                    </span>
+                    {filterModel !== 'all' && (
+                      <button
+                        onClick={() => setFilterModel('all')}
+                        className="text-[11px] text-amber-400 hover:underline font-semibold"
+                      >
+                        ✕ Ver Todos os Modelos
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={() => setFilterModel('all')}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                        filterModel === 'all'
+                          ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                          : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 border border-slate-700/60'
+                      }`}
+                    >
+                      Todos os Modelos ({availableImportedModels.reduce((acc, m) => acc + m.totalUnits, 0)} aparelhos)
+                    </button>
+
+                    {availableImportedModels.map(item => (
+                      <button
+                        key={item.model}
+                        onClick={() => setFilterModel(filterModel === item.model ? 'all' : item.model)}
+                        className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 ${
+                          filterModel === item.model
+                            ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20'
+                            : 'bg-slate-900 text-slate-200 hover:bg-slate-800 border border-slate-800'
+                        }`}
+                      >
+                        <span>{item.model}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                          filterModel === item.model ? 'bg-slate-950 text-amber-300 font-bold' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {item.totalUnits} un
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Row 3: Grade */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                  <span className="text-slate-400 font-semibold w-24 shrink-0 flex items-center gap-1">
                     <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
                     {t.gradeFilter}
                   </span>
@@ -909,9 +1058,9 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Row 3: Capacidade */}
+                {/* Row 4: Capacidade */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-slate-400 font-semibold w-20 shrink-0 flex items-center gap-1">
+                  <span className="text-slate-400 font-semibold w-24 shrink-0 flex items-center gap-1">
                     <Package className="w-3.5 h-3.5 text-emerald-400" />
                     {t.capacityFilter}
                   </span>
@@ -942,33 +1091,90 @@ export default function App() {
               </div>
             </div>
 
-            {/* Results Count */}
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>
-                Exibindo <strong>{filteredAuctions.length}</strong> leilões ativos de iPhones
-              </span>
-              {(filterGrade !== 'all' || filterCapacity !== 'all' || filterAuctionHouse !== 'all' || filterModel !== 'all' || searchQuery) && (
-                <button
-                  onClick={() => {
-                    setFilterGrade('all');
-                    setFilterCapacity('all');
-                    setFilterAuctionHouse('all');
-                    setFilterModel('all');
-                    setFilterLotType('all');
-                    setSearchQuery('');
-                  }}
-                  className="text-amber-400 hover:underline font-semibold"
-                >
-                  Limpar filtros
-                </button>
-              )}
+            {/* View Mode Switcher & Selection Toolbar Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 p-3 sm:p-4 rounded-2xl border border-slate-800/80">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-300 font-bold">Modo de Exibição:</span>
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setAuctionsViewMode('list')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      auctionsViewMode === 'list'
+                        ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>Lista de Modelos & Lotes</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAuctionsViewMode('cards')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      auctionsViewMode === 'cards'
+                        ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Cards em Grade</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bulk selection action bar */}
+              <div className="flex items-center gap-2">
+                {selectedLotIds.length > 0 ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg">
+                      {selectedLotIds.length} modelo(s) selecionado(s) na lista
+                    </span>
+                    <button
+                      onClick={handleOpenCalculatorForSelected}
+                      className="px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      <Calculator className="w-3.5 h-3.5" />
+                      <span>Calcular Lucro</span>
+                    </button>
+                    <button
+                      onClick={() => setSelectedLotIds([])}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-xs text-slate-400 gap-3">
+                    <span>
+                      Exibindo <strong>{filteredAuctions.length}</strong> lotes/modelos de leilão
+                    </span>
+                    {(filterGrade !== 'all' || filterCapacity !== 'all' || filterAuctionHouse !== 'all' || filterModel !== 'all' || searchQuery) && (
+                      <button
+                        onClick={() => {
+                          setFilterGrade('all');
+                          setFilterCapacity('all');
+                          setFilterAuctionHouse('all');
+                          setFilterModel('all');
+                          setFilterLotType('all');
+                          setSearchQuery('');
+                        }}
+                        className="text-amber-400 hover:underline font-semibold"
+                      >
+                        Limpar filtros
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Grid */}
+            {/* Results Display: List View or Grid View */}
             {filteredAuctions.length === 0 ? (
               <div className="p-12 text-center bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl space-y-3">
                 <Package className="w-10 h-10 text-slate-600 mx-auto" />
-                <h3 className="text-base font-bold text-white">Nenhum leilão encontrado com estes filtros</h3>
+                <h3 className="text-base font-bold text-white">Nenhum modelo encontrado com estes filtros</h3>
                 <button
                   onClick={() => {
                     setFilterGrade('all');
@@ -985,19 +1191,302 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {paginatedAuctions.map(lot => (
-                    <AuctionCard
-                      key={lot.id}
-                      lot={lot}
-                      onSelectLot={lotItem => setSelectedLotForDetail(lotItem)}
-                      onQuickBid={lotItem => setSelectedLotForDetail(lotItem)}
-                      onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
-                      currency={currency}
-                      usdRate={usdRate}
-                    />
-                  ))}
-                </div>
+                {auctionsViewMode === 'list' ? (
+                  /* ======================================================== */
+                  /* LIST VIEW: TABELA & SELEÇÃO DE MODELOS                   */
+                  /* ======================================================== */
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+                    {/* Mobile List View (< md) */}
+                    <div className="md:hidden divide-y divide-slate-800/80">
+                      {paginatedAuctions.map(lot => {
+                        const isSelected = selectedLotIds.includes(lot.id);
+                        const cleanTitle = stripLotPrefix(lot.title);
+                        const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || GRADE_EXPLANATIONS['Grade A'];
+                        const currentBrl = lot.currentBidUsd * usdRate;
+                        const isVerizon = lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse);
+                        const isAssurant = lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse);
+
+                        return (
+                          <div key={lot.id} className={`p-4 space-y-3 transition-colors ${isSelected ? 'bg-amber-500/5' : ''}`}>
+                            <div className="flex items-start gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSelectLot(lot.id)}
+                                className="mt-1 text-slate-400 hover:text-amber-400 shrink-0"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-5 h-5 text-amber-400" />
+                                ) : (
+                                  <Square className="w-5 h-5 text-slate-600" />
+                                )}
+                              </button>
+                              <img
+                                src={lot.imageUrl}
+                                alt={cleanTitle}
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                                }}
+                                onClick={() => setSelectedLotForDetail(lot)}
+                                className="w-16 h-16 rounded-xl object-cover border border-slate-700 shrink-0 cursor-pointer"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono font-bold text-amber-400 text-xs">{lot.lotNumber}</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${gradeInfo?.badgeColor || 'bg-slate-800 text-slate-200'}`}>
+                                    {lot.grade}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">
+                                    {lot.quantity} un.
+                                  </span>
+                                  {isVerizon && (
+                                    <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-black text-[9px] uppercase tracking-wider">
+                                      VERIZON
+                                    </span>
+                                  )}
+                                  {isAssurant && (
+                                    <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white font-black text-[9px] uppercase tracking-wider">
+                                      ASSURANT
+                                    </span>
+                                  )}
+                                </div>
+                                <h4
+                                  onClick={() => setSelectedLotForDetail(lot)}
+                                  className="text-xs font-bold text-white mt-1 line-clamp-2 cursor-pointer hover:text-amber-300"
+                                >
+                                  {cleanTitle}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 block mt-0.5">{lot.auctionHouse}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Lance Atual:</span>
+                                <span className="font-mono font-bold text-amber-400 text-sm">
+                                  ${lot.currentBidUsd.toLocaleString()} USD
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono ml-1.5">
+                                  (R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedLotForDetail(lot)}
+                                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs transition-colors"
+                                >
+                                  Detalhes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedLotForDetail(lot)}
+                                  className="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs transition-colors"
+                                >
+                                  Dar Lance
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Desktop Table View (>= md) */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950/90 text-slate-400 font-mono uppercase text-[10px] border-b border-slate-800 tracking-wider">
+                          <tr>
+                            <th className="p-3.5 w-10 text-center">
+                              <button
+                                type="button"
+                                onClick={handleSelectAllOnPage}
+                                className="text-slate-400 hover:text-white"
+                                title="Selecionar todos da página"
+                              >
+                                {paginatedAuctions.length > 0 && paginatedAuctions.every(l => selectedLotIds.includes(l.id)) ? (
+                                  <CheckSquare className="w-4 h-4 text-amber-400" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-500" />
+                                )}
+                              </button>
+                            </th>
+                            <th className="p-3.5">Foto</th>
+                            <th className="p-3.5">Modelo & Lote</th>
+                            <th className="p-3.5">Leilão</th>
+                            <th className="p-3.5">Grade</th>
+                            <th className="p-3.5">Qtd / Memória</th>
+                            <th className="p-3.5">Status Laudo</th>
+                            <th className="p-3.5">Lance Atual</th>
+                            <th className="p-3.5 text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-sans">
+                          {paginatedAuctions.map(lot => {
+                            const isSelected = selectedLotIds.includes(lot.id);
+                            const cleanTitle = stripLotPrefix(lot.title);
+                            const gradeInfo = GRADE_EXPLANATIONS[lot.grade] || GRADE_EXPLANATIONS['Grade A'];
+                            const currentBrl = lot.currentBidUsd * usdRate;
+                            const isVerizon = lot.sourceType === 'VERIZON' || /verizon/i.test(lot.auctionHouse);
+                            const isAssurant = lot.sourceType === 'ASSURANT' || /assurant/i.test(lot.auctionHouse);
+
+                            return (
+                              <tr key={lot.id} className={`hover:bg-slate-800/40 transition-colors ${isSelected ? 'bg-amber-500/5' : ''}`}>
+                                <td className="p-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSelectLot(lot.id)}
+                                    className="text-slate-400 hover:text-amber-400"
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="w-4 h-4 text-amber-400" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-slate-600" />
+                                    )}
+                                  </button>
+                                </td>
+
+                                {/* Photo Thumbnail */}
+                                <td className="p-3.5">
+                                  <div
+                                    onClick={() => setSelectedLotForDetail(lot)}
+                                    className="w-14 h-14 rounded-xl bg-slate-950 overflow-hidden border border-slate-800 cursor-pointer relative group shrink-0"
+                                  >
+                                    <img
+                                      src={lot.imageUrl}
+                                      alt={cleanTitle}
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).src = '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
+                                      }}
+                                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    />
+                                  </div>
+                                </td>
+
+                                {/* Model & Lot Title */}
+                                <td className="p-3.5">
+                                  <div className="space-y-0.5">
+                                    <span
+                                      className="font-bold text-white text-sm block hover:text-amber-400 cursor-pointer transition-colors"
+                                      onClick={() => setSelectedLotForDetail(lot)}
+                                    >
+                                      {lot.modelFamily}
+                                    </span>
+                                    <span className="text-[11px] text-slate-300 font-medium line-clamp-1">
+                                      {cleanTitle}
+                                    </span>
+                                    <div className="flex items-center gap-2 pt-0.5">
+                                      <span className="font-mono text-[10px] text-amber-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                                        {lot.lotNumber}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                                        {lot.location}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Auction Origin */}
+                                <td className="p-3.5">
+                                  {isVerizon ? (
+                                    <span className="px-2 py-1 rounded bg-red-600/90 text-white font-black text-[10px] uppercase tracking-wider inline-block">
+                                      VERIZON
+                                    </span>
+                                  ) : isAssurant ? (
+                                    <span className="px-2 py-1 rounded bg-blue-600/90 text-white font-black text-[10px] uppercase tracking-wider inline-block">
+                                      ASSURANT
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-1 rounded bg-slate-800 text-slate-300 font-bold text-[10px] inline-block">
+                                      {lot.auctionHouse}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Grade */}
+                                <td className="p-3.5">
+                                  <span className={`px-2.5 py-1 rounded text-xs font-bold border inline-block ${gradeInfo?.badgeColor || 'bg-slate-800 text-slate-200'}`}>
+                                    {lot.grade}
+                                  </span>
+                                </td>
+
+                                {/* Qtd & Storage */}
+                                <td className="p-3.5">
+                                  <div className="font-mono">
+                                    <span className="text-white font-bold block">{lot.quantity} {lot.quantity === 1 ? 'unidade' : 'unidades'}</span>
+                                    <span className="text-slate-400 text-[11px] block">{lot.primaryStorage}</span>
+                                  </div>
+                                </td>
+
+                                {/* Status */}
+                                <td className="p-3.5">
+                                  <div className="space-y-0.5 text-[11px]">
+                                    <div className="flex items-center gap-1 text-emerald-400 font-medium">
+                                      <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                      <span>Clean ESN / FMI OFF</span>
+                                    </div>
+                                    <span className="text-slate-400 font-mono text-[10px] block">
+                                      Bat: {lot.batteryHealthRange}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Current Bid */}
+                                <td className="p-3.5">
+                                  <div>
+                                    <span className="font-mono font-bold text-amber-400 text-sm block">
+                                      ${lot.currentBidUsd.toLocaleString()} USD
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      R$ {currentBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 block">
+                                      (${Math.round(lot.currentBidUsd / (lot.quantity || 1)).toLocaleString()}/un)
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Actions */}
+                                <td className="p-3.5 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCalculatorForLot(lot)}
+                                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors"
+                                      title="Calcular Lucro deste lote"
+                                    >
+                                      <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedLotForDetail(lot)}
+                                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-lg text-xs transition-colors"
+                                    >
+                                      Dar Lance
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {paginatedAuctions.map(lot => (
+                      <AuctionCard
+                        key={lot.id}
+                        lot={lot}
+                        onSelectLot={lotItem => setSelectedLotForDetail(lotItem)}
+                        onQuickBid={lotItem => setSelectedLotForDetail(lotItem)}
+                        onCalculateLot={lotItem => handleOpenCalculatorForLot(lotItem)}
+                        currency={currency}
+                        usdRate={usdRate}
+                      />
+                    ))}
+                  </div>
+                )}
 
                 {/* Ultra-Fast Responsive Pagination Bar */}
                 {totalAuctionsPages > 1 && (
