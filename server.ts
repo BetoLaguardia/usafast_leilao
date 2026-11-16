@@ -7,7 +7,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Inicializa o cliente do Supabase usando as variáveis de ambiente configuradas na Vercel
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
@@ -29,19 +28,18 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '100mb' }));
 
-  // Endpoint para buscar leilões direto do Supabase
+  // Endpoint para buscar leilões direto da tabela leiloes_importados no Supabase
   app.get('/api/auctions', async (req, res) => {
     try {
       const q = String(req.query.search || '').trim().toLowerCase();
       const source = String(req.query.source || '').trim().toUpperCase();
 
-      // Busca os dados da tabela 'auctions' no Supabase
       let { data: auctionsData, error } = await supabase
-        .from('auctions')
+        .from('leiloes_importados')
         .select('*');
 
       if (error) {
-        console.error('[Supabase Error] Falha ao buscar leilões:', error);
+        console.error('[Supabase Error] Falha ao buscar da tabela leiloes_importados:', error);
         return res.json({ ok: true, count: INITIAL_AUCTIONS.length, total: INITIAL_AUCTIONS.length, auctions: INITIAL_AUCTIONS });
       }
 
@@ -72,27 +70,26 @@ async function startServer() {
     }
   });
 
-  // Endpoint para salvar os leilões importados direto no Supabase
+  // Endpoint para salvar os leilões importados na tabela leiloes_importados
   app.post('/api/auctions', async (req, res) => {
     try {
       const { auctions } = req.body || {};
       if (Array.isArray(auctions) && auctions.length > 0) {
         const sanitized = sanitizeAuctions(auctions);
 
-        // Opcional: limpa a tabela ou insere/atualiza os lotes novos
-        // Aqui limpamos os antigos e inserimos os novos lotes da planilha importada
-        const { error: deleteError } = await supabase.from('auctions').delete().neq('id', 0); // Limpa registros anteriores se necessário
+        // Limpa os registros antigos e insere os novos lotes da planilha atualizada
+        await supabase.from('leiloes_importados').delete().neq('id', 0);
         
         const { error: insertError } = await supabase
-          .from('auctions')
+          .from('leiloes_importados')
           .insert(sanitized);
 
         if (insertError) {
-          console.error('[Supabase Error] Erro ao inserir no banco:', insertError);
+          console.error('[Supabase Error] Erro ao inserir na tabela leiloes_importados:', insertError);
           return res.status(500).json({ ok: false, error: insertError.message });
         }
 
-        console.log(`[Database Engine] Sincronizados ${sanitized.length} lots com sucesso no Supabase!`);
+        console.log(`[Database Engine] Sincronizados ${sanitized.length} lotes com sucesso na tabela leiloes_importados!`);
         return res.json({ ok: true, count: sanitized.length });
       }
       return res.status(400).json({ ok: false, error: 'Array de leilões inválido' });
