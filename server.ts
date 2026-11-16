@@ -28,23 +28,24 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '100mb' }));
 
-  // Endpoint para buscar leilões direto da tabela leiloes_importados no Supabase
+  // Endpoint para buscar leilões do Supabase (lendo a coluna JSONB)
   app.get('/api/auctions', async (req, res) => {
     try {
       const q = String(req.query.search || '').trim().toLowerCase();
       const source = String(req.query.source || '').trim().toUpperCase();
 
-      let { data: auctionsData, error } = await supabase
+      let { data: rows, error } = await supabase
         .from('leiloes_importados')
-        .select('*');
+        .select('data');
 
       if (error) {
-        console.error('[Supabase Error] Falha ao buscar da tabela leiloes_importados:', error);
+        console.error('[Supabase Error] Falha ao buscar:', error);
         return res.json({ ok: true, count: INITIAL_AUCTIONS.length, total: INITIAL_AUCTIONS.length, auctions: INITIAL_AUCTIONS });
       }
 
-      let results = auctionsData && auctionsData.length > 0 ? auctionsData : INITIAL_AUCTIONS;
-      results = sanitizeAuctions(results);
+      // Extrai os objetos salvos dentro da coluna 'data'
+      let auctionsData = rows && rows.length > 0 ? rows.map((r: any) => r.data) : INITIAL_AUCTIONS;
+      let results = sanitizeAuctions(auctionsData);
 
       if (source && source !== 'ALL') {
         results = results.filter((lot: any) => 
@@ -70,26 +71,29 @@ async function startServer() {
     }
   });
 
-  // Endpoint para salvar os leilões importados na tabela leiloes_importados
+  // Endpoint para salvar os leilões importados na coluna JSONB
   app.post('/api/auctions', async (req, res) => {
     try {
       const { auctions } = req.body || {};
       if (Array.isArray(auctions) && auctions.length > 0) {
         const sanitized = sanitizeAuctions(auctions);
 
-        // Limpa os registros antigos e insere os novos lotes da planilha atualizada
+        // Limpa registros antigos
         await supabase.from('leiloes_importados').delete().neq('id', 0);
         
+        // Formata cada lote para ser inserido na coluna 'data'
+        const rowsToInsert = sanitized.map(lot => ({ data: lot }));
+
         const { error: insertError } = await supabase
           .from('leiloes_importados')
-          .insert(sanitized);
+          .insert(rowsToInsert);
 
         if (insertError) {
-          console.error('[Supabase Error] Erro ao inserir na tabela leiloes_importados:', insertError);
+          console.error('[Supabase Error] Erro ao inserir:', insertError);
           return res.status(500).json({ ok: false, error: insertError.message });
         }
 
-        console.log(`[Database Engine] Sincronizados ${sanitized.length} lotes com sucesso na tabela leiloes_importados!`);
+        console.log(`[Database Engine] Sincronizados ${sanitized.length} lotes com sucesso no Supabase!`);
         return res.json({ ok: true, count: sanitized.length });
       }
       return res.status(400).json({ ok: false, error: 'Array de leilões inválido' });
