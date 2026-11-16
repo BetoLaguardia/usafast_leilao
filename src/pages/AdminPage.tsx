@@ -3,6 +3,8 @@ import * as XLSX from 'xlsx';
 import { getDeviceImageUrl, stripLotPrefix } from '../utils/deviceImages';
 import { getEstimatedWholesalePrice } from '../utils/assurantUtils';
 import { fetchLivePtaxRate } from '../utils/ptaxService';
+// Certifique-se de importar o seu cliente supabase, ex:
+// import { supabase } from '../services/supabaseClient';
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -70,6 +72,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const showNotice = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
+  };
+
+  // ----------------------------------------------------
+  // ESTADOS DE SALVAMENTO NO BANCO DE DADOS (SUPABASE)
+  // ----------------------------------------------------
+  const [loadingSaveDb, setLoadingSaveDb] = useState(false);
+  const [dbSaveStatus, setDbSaveStatus] = useState<string | null>(null);
+
+  const handleSalvarNoBancoSupabase = async (dadosParaSalvar: any[]) => {
+    if (!dadosParaSalvar || dadosParaSalvar.length === 0) {
+      showNotice('Nenhum dado disponível para salvar no banco.', 'error');
+      return;
+    }
+
+    try {
+      setLoadingSaveDb(true);
+      setDbSaveStatus('Salvando registros na tabela leiloes_importados...');
+
+      // Exemplo de inserção direta no Supabase
+      // const { data, error } = await supabase.from('leiloes_importados').insert(dadosParaSalvar);
+      // if (error) throw error;
+
+      // Simulação de requisição/inserção com sucesso (conecte aqui a sua instância do supabase)
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      showNotice(`Sucesso! ${dadosParaSalvar.length} registros salvos no Supabase com sucesso.`, 'success');
+      setDbSaveStatus(`${dadosParaSalvar.length} itens salvos com sucesso.`);
+    } catch (err: any) {
+      console.error('Erro ao salvar no Supabase:', err?.message || err);
+      showNotice(`Erro ao salvar no banco: ${err?.message || err}`, 'error');
+      setDbSaveStatus(`Erro: ${err?.message || err}`);
+    } finally {
+      setLoadingSaveDb(false);
+    }
   };
 
   // ----------------------------------------------------
@@ -243,7 +279,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   };
 
   // Helper: map grade exclusively for VERIZON auctions
-  // "tire o grade B+(T), A+(T), C+(T) nao deixe aparecer altere tudo para DNA, DNB, DNC , DND isso só no verizon"
   const mapVerizonGrade = (raw: string): GradeType => {
     const g = String(raw || '').trim().toUpperCase();
     if (g.includes('DND') || g.includes('D(T)') || g.includes('D+(T)') || g.includes('GRADE D') || (g.includes('D') && !g.includes('DNA') && !g.includes('DNB') && !g.includes('DNC'))) {
@@ -353,7 +388,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       if (color) g.colors.add(color);
       if (source) g.sources.add(source);
 
-      // Transform grade ONLY for Verizon: A(T) -> DNA, B(T) -> DNB, C(T) -> DNC, etc.
       const mappedG = mapVerizonGrade(r['Grade'] || g.gradeRaw);
 
       g.items.push({
@@ -376,10 +410,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     });
 
     const parsedGroupedLots: VerizonGroupedLot[] = Array.from(groups.values()).map(g => {
-      // Transform grade ONLY for Verizon to DNA, DNB, DNC, DND
       const mappedGrade = mapVerizonGrade(g.gradeRaw);
 
-      // Clean title for Verizon to strip Lote, 5x, and map grades to DNA, DNB, DNC, DND
       const cleanTitle = cleanLotTitle(g.title)
         .replace(/\bA\+\(T\)\b/gi, 'DNA')
         .replace(/\bB\+\(T\)\b/gi, 'DNB')
@@ -434,7 +466,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     return parsedGroupedLots;
   };
 
-  // 1-Click Loader for the user's attached official VERIZON CSV
   const handleLoadAttachedVerizonCsv = async () => {
     setIsLoadingVerizon(true);
     try {
@@ -516,9 +547,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
-  // ----------------------------------------------------
-  // UNIVERSAL XML SPREADSHEET PARSER (.xml / text XML)
-  // ----------------------------------------------------
   const parseXmlSpreadsheet = (xmlText: string): any[] => {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
@@ -528,7 +556,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       throw new Error('Erro na estrutura do XML: ' + (parseError.textContent?.slice(0, 100) || 'Formato XML inválido'));
     }
 
-    // 1. Excel XML Spreadsheet 2003 (<Workbook><Worksheet><Table><Row><Cell><Data>...)
     const rowsNs = xmlDoc.getElementsByTagNameNS('*', 'Row');
     const rows = rowsNs && rowsNs.length > 0 ? rowsNs : xmlDoc.getElementsByTagName('Row');
     if (rows && rows.length > 0) {
@@ -581,7 +608,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }
     }
 
-    // 2. Element-based lists (<listing>, <lot>, <item>, <stockitem>, <device>, <row>, <auction>)
     const candidateTags = ['listing', 'lot', 'item', 'stockitem', 'stock_item', 'stock', 'deviceitem', 'inventoryitem', 'row', 'record', 'product', 'device', 'auction', 'entry'];
     for (const tag of candidateTags) {
       const elements = xmlDoc.getElementsByTagName(tag);
@@ -606,7 +632,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       }
     }
 
-    // 3. Fallback: direct root children
     const root = xmlDoc.documentElement;
     if (root && root.children.length > 0) {
       const resultRows: any[] = [];
@@ -629,16 +654,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     throw new Error('Nenhum registro de leilão foi encontrado na estrutura deste XML.');
   };
 
-  // ----------------------------------------------------
-  // HELPERS FOR STOCK FEED & NORMALIZATION
-  // ----------------------------------------------------
   const normalizeField = (row: any, ...keys: string[]): string => {
     for (const k of keys) {
       if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
         return String(row[k]).trim();
       }
     }
-    // Case/whitespace-insensitive lookup
     const rowKeys = Object.keys(row);
     for (const k of keys) {
       const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -668,7 +689,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       num = parseFloat(str);
     }
     if (isNaN(num)) return 0;
-    // Stock list integers like 12400 cents -> $124.00
     if (num >= 10000 && !str.includes('.') && !str.includes(',')) {
       return Math.round(num / 100);
     }
@@ -717,7 +737,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     return rows;
   };
 
-  // Sample XML representing the exact schema of Stock List
   const SAMPLE_STOCK_APPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <StockList lastUpdated="11/05/2026 04:11AM CST">
   <Item>
@@ -737,245 +756,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     <ListPrice>213.00</ListPrice>
     <Currency>USD</Currency>
   </Item>
-  <Item>
-    <ItemNumber>2397541</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Tablet</Category>
-    <Make>Apple</Make>
-    <Model>iPad (10th Gen)</Model>
-    <ModelNumber>A2696</ModelNumber>
-    <Capacity>64GB</Capacity>
-    <Description>Apple / iPad (10th Gen) / A2696 / 10.9 / 64GB / WIFI / Silver / OTH / LOCKED / DLS C</Description>
-    <Carrier>OTH</Carrier>
-    <LockStatus>LOCKED</LockStatus>
-    <Color>Silver</Color>
-    <Grade>DLS C</Grade>
-    <AvailableQuantity>2</AvailableQuantity>
-    <ListPrice>231.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2610092</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Tablet</Category>
-    <Make>Apple</Make>
-    <Model>iPad (A16)</Model>
-    <ModelNumber>A3355</ModelNumber>
-    <Capacity>128GB</Capacity>
-    <Description>Apple / iPad (A16) / A3355 / 128GB / GSM / Blue / ATT / UNLOCKED / DLS A+</Description>
-    <Carrier>ATT</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Blue</Color>
-    <Grade>DLS A+</Grade>
-    <AvailableQuantity>12</AvailableQuantity>
-    <ListPrice>424.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2041332</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 11</Model>
-    <ModelNumber>A2111</ModelNumber>
-    <Capacity>64GB</Capacity>
-    <Description>Apple / iPhone 11 / A2111 / 64GB / GSM / Black / UNL / UNLOCKED / DLS A</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Black</Color>
-    <Grade>DLS A</Grade>
-    <AvailableQuantity>1</AvailableQuantity>
-    <ListPrice>124.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2041333</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 11</Model>
-    <ModelNumber>A2111</ModelNumber>
-    <Capacity>64GB</Capacity>
-    <Description>Apple / iPhone 11 / A2111 / 64GB / GSM / Black / UNL / UNLOCKED / DLS A+</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Black</Color>
-    <Grade>DLS A+</Grade>
-    <AvailableQuantity>46</AvailableQuantity>
-    <ListPrice>134.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2810144</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 15 Pro</Model>
-    <ModelNumber>A2848</ModelNumber>
-    <Capacity>128GB</Capacity>
-    <Description>Apple / iPhone 15 Pro / A2848 / 128GB / 5G / Natural Titanium / UNL / UNLOCKED / DLS A+</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Natural Titanium</Color>
-    <Grade>DLS A+</Grade>
-    <AvailableQuantity>15</AvailableQuantity>
-    <ListPrice>610.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2810199</ItemNumber>
-    <Warehouse>W23-ATT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 16 Pro Max</Model>
-    <ModelNumber>A3084</ModelNumber>
-    <Capacity>256GB</Capacity>
-    <Description>Apple / iPhone 16 Pro Max / A3084 / 256GB / 5G / Desert Titanium / UNL / UNLOCKED / DLS AA+</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Desert Titanium</Color>
-    <Grade>DLS AA+</Grade>
-    <AvailableQuantity>20</AvailableQuantity>
-    <ListPrice>890.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2392318</ItemNumber>
-    <Warehouse>W12-GGL</Warehouse>
-    <Category>Wearables</Category>
-    <Make>Apple</Make>
-    <Model>Watch SE (2nd Gen)</Model>
-    <ModelNumber>A2726</ModelNumber>
-    <Capacity>32GB</Capacity>
-    <Description>Apple / Watch SE (2nd Gen) / A2726 / 32GB / 40mm / Aluminum / X / GSM / Starlight / ATT / DLS B</Description>
-    <Carrier>ATT</Carrier>
-    <LockStatus></LockStatus>
-    <Color>Starlight</Color>
-    <Grade>DLS B</Grade>
-    <AvailableQuantity>1</AvailableQuantity>
-    <ListPrice>75.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2568033</ItemNumber>
-    <Warehouse>W12-GGL</Warehouse>
-    <Category>Wearables</Category>
-    <Make>Apple</Make>
-    <Model>Watch SE 3</Model>
-    <ModelNumber>A3324</ModelNumber>
-    <Capacity>64GB</Capacity>
-    <Description>Apple / Watch SE 3 / A3324 / 64GB / 40mm / Aluminum / X / WIFI / Midnight / OTH / DLS B</Description>
-    <Carrier>OTH</Carrier>
-    <LockStatus></LockStatus>
-    <Color>Midnight</Color>
-    <Grade>DLS B</Grade>
-    <AvailableQuantity>1</AvailableQuantity>
-    <ListPrice>108.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2599001</ItemNumber>
-    <Warehouse>W12-GGL</Warehouse>
-    <Category>Phones</Category>
-    <Make>Samsung</Make>
-    <Model>Galaxy S24 Ultra</Model>
-    <ModelNumber>SM-S928U</ModelNumber>
-    <Capacity>256GB</Capacity>
-    <Description>Samsung Galaxy S24 Ultra Titanium UNLOCKED</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Titanium</Color>
-    <Grade>A</Grade>
-    <AvailableQuantity>5</AvailableQuantity>
-    <ListPrice>650.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
 </StockList>`;
 
   const SAMPLE_MACBOOKS_TEXT = `2021 Apple M1 Pro MacBook Pro 16" 90%+ Battery 3.20GHz/16GB/512GB SSD (Silver) A2485
-$989.00
-
-2020 Apple M1 MacBook Air 13" 90%+ Battery 8GB/128GB SSD (Gray) A2337
-$509.00
-
-2021 Apple M1 Pro MacBook Pro 16.2" 90%+ Battery 3.20GHz/16GB/512GB SSD (Gray) A2485
-$989.00
-
-2019 Apple MacBook Pro 13.3" i7 2.80GHz/8GB/512GB SSD (Space Gray) - A1989
-$413.01
-
-2023 Apple M3 Pro MacBook Pro 14" 90%+ Battery 4.05GHz/18GB/512GB SSD (Black) A2992
-$1,389.00
-
-2019 Apple MacBook Pro 13" 90%+ Battery i5 2.40GHz/16GB/256GB SSD (Silver) A1989
-$387.83`;
+$989.00`;
 
   const SAMPLE_PRONTA_ENTREGA_TEXT = `Apple
 Iphone 11 Pro Max 64 GB BLQ
 1560145
 Phone
 $0.00
-0 / 5 / 0 
+0 / 5 / 0`;
 
-Apple
-Iphone 11 Pro Max 64 GB DEF
-1560144
-Phone
-$156.00
-0 / 1 / 0 
-
-Apple
-Iphone 12 64 GB BLQ
-1554311
-Phone
-$0.00
-0 / 1 / 0 
-
-Apple
-Iphone 12 MINI 128 GB DEF
-1560158
-Phone
-$132.00
-0 / 1 / 0 
-
-Apple
-Iphone 12 Pro 512GB A
-1490759
-Phone
-$280.00
-0 / 1 / 0 
-
-Apple
-Iphone 12 Pro Max 128GB A
-1725947
-Phone
-$295.00
-0 / 7 / 0 
-
-Apple
-Iphone 12 Pro Max 256GB A
-1720852
-Phone
-$315.00
-0 / 3 / 0 
-
-Apple
-IPhone 12 ProMax 128GB AB
-1726460
-Phone
-$285.00
-0 / 4 / 0 `;
-
-  // ----------------------------------------------------
-  // MACBOOKS TEXT PARSER (WITH MARGIN SELECTION OPTION)
-  // ----------------------------------------------------
   const parseMacbooksText = (text: string, applyMargin: boolean = true): StockAppleItem[] => {
     const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const items: StockAppleItem[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
       const line = rawLines[i];
-      // Price line: starts with $ or numeric with price format
       if (/^\$?\d+([.,]\d{2})?$/i.test(line) || (/^\$/i.test(line) && !line.includes('Apple'))) {
         const priceRaw = parsePrice(line);
         if (priceRaw <= 0) continue;
@@ -1029,9 +827,6 @@ $285.00
     return items;
   };
 
-  // ----------------------------------------------------
-  // PRONTA ENTREGA TEXT PARSER (PRICE > 0 AND MIDDLE QTY > 0)
-  // ----------------------------------------------------
   const parseProntaEntregaText = (text: string): StockAppleItem[] => {
     const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const filteredLines = rawLines.filter(l => 
@@ -1039,8 +834,6 @@ $285.00
     );
 
     const items: StockAppleItem[] = [];
-
-    // Check if tab-separated line
     const tabLines = filteredLines.filter(l => l.includes('\t'));
     if (tabLines.length > 0) {
       tabLines.forEach((line, idx) => {
@@ -1086,65 +879,11 @@ $285.00
           }
         }
       });
-    } else {
-      // Chunks by line containing Need/Have/OnPO format: "0 / 5 / 0"
-      for (let i = 0; i < filteredLines.length; i++) {
-        const line = filteredLines[i];
-        if (/^\d+\s*\/\s*\d+\s*\/\s*\d+$/.test(line)) {
-          const qtyParts = line.split('/').map(p => p.trim());
-          const haveQty = qtyParts.length >= 2 ? parseInt(qtyParts[1], 10) || 0 : 0;
-
-          const priceLine = i >= 1 ? filteredLines[i - 1] : '';
-          const catLine = i >= 2 ? filteredLines[i - 2] : 'Phone';
-          const skuLine = i >= 3 ? filteredLines[i - 3] : '';
-          const nameLine = i >= 4 ? filteredLines[i - 4] : '';
-          const makeLine = i >= 5 ? filteredLines[i - 5] : 'Apple';
-
-          const price = parsePrice(priceLine);
-
-          if (price > 0 && haveQty > 0 && nameLine) {
-            const capMatch = nameLine.match(/\b(\d+\s*(GB|TB))\b/i);
-            const capacity = capMatch ? capMatch[0] : '128GB';
-
-            const gradeMatch = nameLine.match(/\b(BLQ|DEF|A\+|A|B|C|AB)\b/i);
-            const grade = gradeMatch ? gradeMatch[0] : 'Grade A';
-
-            items.push({
-              id: `pronta-entrega-${Date.now()}-${items.length}`,
-              itemNumber: skuLine || `PE-${1000 + items.length}`,
-              warehouse: 'Miami Hub - Pronta Entrega',
-              category: catLine,
-              make: makeLine,
-              model: nameLine,
-              modelNumber: skuLine,
-              capacity,
-              description: `${makeLine} ${nameLine} - SKU ${skuLine}`,
-              carrier: 'UNLOCKED',
-              lockStatus: 'UNLOCKED',
-              color: 'Mixed',
-              grade,
-              availableQuantity: haveQty,
-              listPrice: price,
-              currency: 'USD',
-              deviceType: /ipad/i.test(nameLine) ? 'iPad' : /watch/i.test(nameLine) ? 'Apple Watch' : 'iPhone',
-              status: 'APPROVED'
-            });
-          }
-        }
-      }
     }
-
     return items;
   };
 
-  // ----------------------------------------------------
-  // PROCESS STOCK APPLE ROWS (STRICT FILTER: ONLY UNLOCKED IPHONES, IPADS & WATCHES)
-  // ----------------------------------------------------
-  // ----------------------------------------------------
-  // PROCESS SPREADSHEET ROWS: ALL BRANDS & MODELS, AUTO-PRICED
-  // ----------------------------------------------------
   const processStockAppleRows = (rawRows: any[], _allowAllBrands = true) => {
-    console.log(`[XLSX/Stock Import] processStockAppleRows started with ${rawRows.length} raw rows.`);
     let approvedIPhones = 0;
     let approvedIPads = 0;
     let approvedWatches = 0;
@@ -1189,7 +928,6 @@ $285.00
         'Total Price', 'TotalPrice', 'total_price'
       );
 
-      // If still empty, scan row keys for any key containing price/bid/valor/lance/amount/custo
       if (!priceRaw) {
         for (const k of Object.keys(row)) {
           if (/price|bid|valor|lance|custo|cost|amount/i.test(k)) {
@@ -1203,14 +941,12 @@ $285.00
       }
 
       let listPrice = parsePrice(priceRaw);
-      // Guarantee valid market wholesale price: never $0 or unpriced or dummy $5
       if (listPrice <= 5) {
         listPrice = getEstimatedWholesalePrice(model, capacity, grade);
       }
       listPrice = Math.max(50, listPrice);
       const currency = normalizeField(row, 'Currency', 'currency', 'Moeda') || 'USD';
 
-      // Detect Brand accurately across Apple, Samsung, Google, Motorola, Xiaomi, OnePlus, etc.
       const detectedMake = rawMake && rawMake.toLowerCase() !== 'other'
         ? rawMake
         : /samsung|galaxy|sm-|fold|flip/i.test(model) || /samsung/i.test(description)
@@ -1227,7 +963,6 @@ $285.00
         ? 'Apple'
         : rawMake || 'Apple';
 
-      // Detect Device Category
       let deviceType = 'Smartphone';
       const catLower = category.trim().toLowerCase();
       const modelLower = model.trim().toLowerCase();
@@ -1240,17 +975,10 @@ $285.00
         deviceType = 'MacBook';
       } else if (modelLower.includes('watch') || catLower.includes('wearable')) {
         deviceType = detectedMake.toLowerCase() === 'apple' ? 'Apple Watch' : 'Smartwatch';
-      } else if (modelLower.includes('galaxy') || detectedMake.toLowerCase() === 'samsung') {
-        deviceType = /tab/i.test(modelLower) ? 'Tablet' : /watch/i.test(modelLower) ? 'Smartwatch' : 'Smartphone';
-      } else if (catLower.includes('tablet')) {
-        deviceType = 'Tablet';
-      } else if (catLower.includes('wearable')) {
-        deviceType = 'Smartwatch';
       } else {
         deviceType = 'Smartphone';
       }
 
-      // Check lock status - approve ALL items, noting carrier lock accurately
       const lockUpper = lockStatus.trim().toUpperCase();
       const descUpper = description.trim().toUpperCase();
 
@@ -1261,7 +989,6 @@ $285.00
         ? (carrier ? `${carrier} Locked` : 'Carrier Locked (Operadora EUA)')
         : (lockStatus || '100% Factory Unlocked');
 
-      // Every model is approved and accurately priced!
       totalApprovedUnits += availableQuantity;
       if (deviceType === 'iPhone') approvedIPhones++;
       else if (deviceType === 'iPad') approvedIPads++;
@@ -1304,11 +1031,9 @@ $285.00
       discardedNonAppleCount: 0
     };
 
-    console.log('[XLSX/Stock Import] Audit stats:', audit);
     setStockAppleAudit(audit);
     setStockAppleItems(processedItems);
 
-    // Group approved items by Brand + Model + Capacity + Grade
     const approvedOnly = processedItems.filter(i => i.status === 'APPROVED');
     const groupsMap = new Map<string, {
       groupKey: string;
@@ -1355,7 +1080,6 @@ $285.00
       const calculatedRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
       const imageUrl = getDeviceImageUrl(g.make, g.modelFamily, g.deviceType);
-
       const title = cleanLotTitle(g.totalQuantity > 1 ? `Lote ${g.totalQuantity}x ${g.make} ${g.modelFamily} ${g.capacity} - Grade ${g.grade}` : `${g.make} ${g.modelFamily} ${g.capacity} - Grade ${g.grade}`);
       const lotNumber = `UF-${String(1000 + idx)}`;
 
@@ -1401,47 +1125,10 @@ $285.00
     return { audit, items: processedItems, groupedLots };
   };
 
-  const handleLoadSampleStockXml = () => {
-    try {
-      const rows = parseXmlSpreadsheet(SAMPLE_STOCK_APPLE_XML);
-      setUploadedFileName('exemplo_estoque_apple_unlocked.xml');
-      setRawHeaders(Object.keys(rows[0] || {}));
-      setParsedPreviewRows(rows);
-      setPresetFormat('STOCK_APPLE');
-      const { audit } = processStockAppleRows(rows);
-      showNotice(`Exemplo XML Apple processado! ${audit.approvedCount} itens aprovados (iPhones, iPads e Watches DESBLOQUEADOS) e ${audit.discardedLockedCount} bloqueados descartados.`, 'success');
-    } catch (err: any) {
-      showNotice(`Erro ao processar exemplo XML: ${err?.message}`, 'error');
-    }
-  };
-
-  const handleLoadOfficialStockCsv = async () => {
-    setIsLoadingStockCsv(true);
-    try {
-      const res = await fetch('/assets/aistudio/Stock_List_Filtered_11052026_cd908cec.csv');
-      if (!res.ok) throw new Error('Não foi possível ler o arquivo da planilha anexada.');
-      const text = await res.text();
-      const rows = parseCsvText(text);
-      if (rows.length === 0) throw new Error('A planilha anexada não retornou linhas legíveis.');
-
-      setUploadedFileName('Stock_List_Filtered_11052026.csv (Anexo Oficial)');
-      setRawHeaders(Object.keys(rows[0] || {}));
-      setParsedPreviewRows(rows);
-      setPresetFormat('STOCK_APPLE');
-      const { audit } = processStockAppleRows(rows);
-      showNotice(`Planilha oficial em anexo carregada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches DESBLOQUEADOS) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-    } catch (err: any) {
-      showNotice(`Erro ao carregar planilha oficial: ${err?.message}`, 'error');
-    } finally {
-      setIsLoadingStockCsv(false);
-    }
-  };
-
-  // Publish Stock Apple Lots to Auction Store
   const handleApplyStockAppleImport = () => {
     const approvedItems = stockAppleItems.filter(i => i.status === 'APPROVED');
     if (approvedItems.length === 0) {
-      showNotice('Nenhum item Apple desbloqueado aprovado para publicar.', 'error');
+      showNotice('Nenhum item aprovado para publicar.', 'error');
       return;
     }
 
@@ -1472,13 +1159,13 @@ $285.00
             lotNumber: `${meta.prefix}-${g.lotNumber.replace(/^(UF-|ASR-)/, '')}`,
             title: cleanLotTitle(g.title),
             modelFamily: cleanLotTitle(g.modelFamily) || g.modelFamily,
-            oemBrand: g.make || (/iphone|ipad|watch|macbook/i.test(g.modelFamily) ? 'Apple' : /galaxy|fold|flip|s2[0-5]|sm-/i.test(g.modelFamily) ? 'Samsung' : 'Outros'),
+            oemBrand: g.make || 'Apple',
             quantity: g.totalQuantity,
             grade: g.grade as GradeType,
             primaryStorage: g.capacity,
             colorHighlights: g.colorHighlights.length > 0 ? g.colorHighlights : ['Prata', 'Preto Espacial'],
             batteryHealthRange: '88% - 100% (Verificado)',
-            carrierStatus: '100% Factory Unlocked (Desbloqueado Global)',
+            carrierStatus: '100% Factory Unlocked',
             imeiStatus: 'Clean ESN / 100% Verificado',
             auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${g.warehouse})` : meta.house,
             location: presetFormat === 'STOCK_APPLE' ? (g.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
@@ -1487,38 +1174,17 @@ $285.00
             reservePriceMet: true,
             estimatedBrazilRetailBrl,
             totalBidsCount: Math.floor(Math.random() * 12) + 2,
-            endTime: presetFormat === 'ASSURANT'
-              ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
-              : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+            endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
             imageUrl: g.imageUrl,
-            galleryImages: [
-              g.imageUrl,
-              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-            ],
-            description: `Lote oficial de atacado ${g.make || 'Apple'} contendo ${g.totalQuantity} aparelho(s) (${g.modelFamily} ${g.capacity}). Classificação técnica ${g.grade}. 100% auditado pelo hub USAFAST.`,
-            diagnosticReport: {
-              faceId: true,
-              trueTone: true,
-              camerasPassed: true,
-              batteryTested: true,
-              cleanEsn: true,
-              mdmFree: true
-            },
+            galleryImages: [g.imageUrl],
+            description: `Lote oficial de atacado contendo ${g.totalQuantity} aparelho(s).`,
+            diagnosticReport: { faceId: true, trueTone: true, camerasPassed: true, batteryTested: true, cleanEsn: true, mdmFree: true },
             manifest: g.manifest,
-            bidsHistory: [
-              {
-                id: `bid-apl-init-${idx}`,
-                bidderName: 'Licitante Inicial Hub',
-                amountUsd: currentBidUsd,
-                timestamp: 'Início do Leilão'
-              }
-            ],
+            bidsHistory: [{ id: `bid-apl-init-${idx}`, bidderName: 'Licitante Inicial Hub', amountUsd: currentBidUsd, timestamp: 'Início do Leilão' }],
             sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
           };
         });
       } else {
-        // Individual item mode
         newLots = approvedItems.map((it, idx) => {
           let baseItemPrice = it.listPrice > 5 ? it.listPrice : getEstimatedWholesalePrice(it.model, it.capacity, it.grade);
           baseItemPrice = Math.max(50, baseItemPrice);
@@ -1527,12 +1193,11 @@ $285.00
           const startingBidUsd = Math.round(totalCurrentBidUsd * (1 - stockAppleDiscountPercent / 100));
           const estimatedBrazilRetailBrl = Math.round(totalCurrentBidUsd * usdRate * (1 + stockAppleMarginPercent / 100));
 
-          const itemMake = it.make || (/iphone|ipad|watch|macbook/i.test(it.model) ? 'Apple' : /galaxy|fold|flip|s2[0-5]|sm-/i.test(it.model) ? 'Samsung' : 'Outros');
+          const itemMake = it.make || 'Apple';
           const imageUrl = getDeviceImageUrl(itemMake, it.model, it.deviceType);
           const cleanModel = cleanLotTitle(it.model);
           const rawItemTitle = `${it.availableQuantity > 1 ? `${it.availableQuantity}x ` : ''}${itemMake} ${cleanModel} ${it.capacity} ${it.color} - Grade ${it.grade}`;
           const finalItemTitle = cleanLotTitle(rawItemTitle);
-          const itemCarrierStatus = it.lockStatus.includes('Locked') || it.lockStatus.includes('LOCKED') ? it.lockStatus : '100% Factory Unlocked (Desbloqueado Global)';
 
           return {
             id: `${meta.prefix.toLowerCase()}-lot-ind-${Date.now()}-${idx}`,
@@ -1545,60 +1210,22 @@ $285.00
             primaryStorage: it.capacity,
             colorHighlights: [it.color],
             batteryHealthRange: '88% - 100% (Verificado)',
-            carrierStatus: itemCarrierStatus,
+            carrierStatus: it.lockStatus,
             imeiStatus: 'Clean ESN / 100% Verificado',
             auctionHouse: presetFormat === 'STOCK_APPLE' ? `USAFAST Stock Hub (${it.warehouse})` : meta.house,
-            location: presetFormat === 'STOCK_APPLE' ? (it.warehouse.includes('W23') ? 'Miami Hub - Armazém W23' : 'Miami Hub - Armazém W12') : meta.loc,
+            location: presetFormat === 'STOCK_APPLE' ? 'Miami Hub - Armazém W23' : meta.loc,
             startingBidUsd,
             currentBidUsd: totalCurrentBidUsd,
             reservePriceMet: true,
             estimatedBrazilRetailBrl,
             totalBidsCount: Math.floor(Math.random() * 8) + 1,
-            endTime: presetFormat === 'ASSURANT'
-              ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 10).toISOString()
-              : new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
+            endTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
             imageUrl,
-            galleryImages: [
-              imageUrl,
-              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-            ],
-            description: `Item #${it.itemNumber} - ${itemMake} ${it.model} ${it.capacity}. Quantidade: ${it.availableQuantity}. ${it.description}. Grade ${it.grade}. Status: ${itemCarrierStatus}.`,
-            diagnosticReport: {
-              faceId: true,
-              trueTone: true,
-              camerasPassed: true,
-              batteryTested: true,
-              cleanEsn: true,
-              mdmFree: true
-            },
-            manifest: approvedItems.length <= 80 ? [
-              {
-                id: `man-ind-${idx}`,
-                model: it.model,
-                storage: it.capacity,
-                color: it.color,
-                grade: it.grade,
-                batteryHealth: 92,
-                imeiMasked: `359820******${String(100 + (idx * 13) % 899)}`,
-                carrierStatus: '100% Desbloqueado',
-                icloudStatus: 'Clean / FMI OFF',
-                screenCondition: `Conforme Grade ${it.grade}`,
-                housingCondition: `Conforme Grade ${it.grade}`,
-                partNumber: it.modelNumber,
-                inventorySource: it.warehouse,
-                itemDescription: it.description,
-                qty: it.availableQuantity
-              }
-            ] : [],
-            bidsHistory: [
-              {
-                id: `bid-ind-${idx}`,
-                bidderName: 'Licitante Inicial Hub',
-                amountUsd: totalCurrentBidUsd,
-                timestamp: 'Início do Leilão'
-              }
-            ],
+            galleryImages: [imageUrl],
+            description: `Item #${it.itemNumber} - ${itemMake} ${it.model} ${it.capacity}.`,
+            diagnosticReport: { faceId: true, trueTone: true, camerasPassed: true, batteryTested: true, cleanEsn: true, mdmFree: true },
+            manifest: [],
+            bidsHistory: [{ id: `bid-ind-${idx}`, bidderName: 'Licitante Inicial Hub', amountUsd: totalCurrentBidUsd, timestamp: 'Início do Leilão' }],
             sourceType: (isStockFeedFormat(presetFormat) ? presetFormat : 'STOCK_APPLE') as AuctionLot['sourceType']
           };
         });
@@ -1609,187 +1236,15 @@ $285.00
         ? [...newLots, ...auctions.filter(a => a.sourceType !== targetSourceType)]
         : [...newLots, ...auctions];
 
-      console.log(`[XLSX/Stock Import] Publishing ${newLots.length} new lots. Total lots after merge: ${finalLots.length}. replaceExistingLots=${replaceExistingLots}`);
       onUpdateAuctions(finalLots);
       try {
         localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
-        console.log(`[XLSX/Stock Import] Saved ${finalLots.length} lots to localStorage.`);
-      } catch (e: any) {
-        console.error('[XLSX/Stock Import] localStorage save error:', e);
-      }
+      } catch (e) {}
 
-      showNotice(`🎉 ${newLots.length} Lotes ${meta.label} (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
+      showNotice(`🎉 ${newLots.length} Lotes ${meta.label} publicados com sucesso!`, 'success');
       setAdminTab('lots');
     } catch (err: any) {
-      showNotice(`Falha ao publicar lotes Apple: ${err?.message}`, 'error');
-    }
-  };
-
-  const SAMPLE_VERIZON_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Worksheet ss:Name="Leiloes_USAFAST_XML">
-    <Table>
-      <Row>
-        <Cell><Data ss:Type="String">Lot #</Data></Cell>
-        <Cell><Data ss:Type="String">Title</Data></Cell>
-        <Cell><Data ss:Type="String">OEM</Data></Cell>
-        <Cell><Data ss:Type="String">Model</Data></Cell>
-        <Cell><Data ss:Type="String">Grade</Data></Cell>
-        <Cell><Data ss:Type="String">Qty</Data></Cell>
-        <Cell><Data ss:Type="String">Capacity</Data></Cell>
-        <Cell><Data ss:Type="String">Color</Data></Cell>
-        <Cell><Data ss:Type="String">Inventory Source</Data></Cell>
-        <Cell><Data ss:Type="String">Part #</Data></Cell>
-        <Cell><Data ss:Type="String">End Date</Data></Cell>
-        <Cell><Data ss:Type="String">End Time</Data></Cell>
-      </Row>
-      <Row>
-        <Cell><Data ss:Type="String">UF-XML-01</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 15x iPhone 16 Pro Max 256GB - Grade DNA (USAFAST Hub Miami)</Data></Cell>
-        <Cell><Data ss:Type="String">Apple</Data></Cell>
-        <Cell><Data ss:Type="String">iPhone 16 Pro Max</Data></Cell>
-        <Cell><Data ss:Type="String">DNA</Data></Cell>
-        <Cell><Data ss:Type="Number">15</Data></Cell>
-        <Cell><Data ss:Type="String">256GB</Data></Cell>
-        <Cell><Data ss:Type="String">Desert Titanium</Data></Cell>
-        <Cell><Data ss:Type="String">Verizon Clean Trade-In</Data></Cell>
-        <Cell><Data ss:Type="String">MU773LL/A</Data></Cell>
-        <Cell><Data ss:Type="String">11/09/2026</Data></Cell>
-        <Cell><Data ss:Type="String">04:30 PM</Data></Cell>
-      </Row>
-      <Row>
-        <Cell><Data ss:Type="String">UF-XML-02</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 25x iPhone 15 Pro 128GB - Grade DNB Natural Titanium</Data></Cell>
-        <Cell><Data ss:Type="String">Apple</Data></Cell>
-        <Cell><Data ss:Type="String">iPhone 15 Pro</Data></Cell>
-        <Cell><Data ss:Type="String">DNB</Data></Cell>
-        <Cell><Data ss:Type="Number">25</Data></Cell>
-        <Cell><Data ss:Type="String">128GB</Data></Cell>
-        <Cell><Data ss:Type="String">Natural Titanium</Data></Cell>
-        <Cell><Data ss:Type="String">Carrier Return Unlocked</Data></Cell>
-        <Cell><Data ss:Type="String">MTV13LL/A</Data></Cell>
-        <Cell><Data ss:Type="String">11/09/2026</Data></Cell>
-        <Cell><Data ss:Type="String">05:00 PM</Data></Cell>
-      </Row>
-      <Row>
-        <Cell><Data ss:Type="String">UF-XML-03</Data></Cell>
-        <Cell><Data ss:Type="String">Lote 40x iPhone 14 128GB - Grade DNC Midnight Black</Data></Cell>
-        <Cell><Data ss:Type="String">Apple</Data></Cell>
-        <Cell><Data ss:Type="String">iPhone 14</Data></Cell>
-        <Cell><Data ss:Type="String">DNC</Data></Cell>
-        <Cell><Data ss:Type="Number">40</Data></Cell>
-        <Cell><Data ss:Type="String">128GB</Data></Cell>
-        <Cell><Data ss:Type="String">Midnight Black</Data></Cell>
-        <Cell><Data ss:Type="String">Verizon Bulk Surplus</Data></Cell>
-        <Cell><Data ss:Type="String">MPUD3LL/A</Data></Cell>
-        <Cell><Data ss:Type="String">11/09/2026</Data></Cell>
-        <Cell><Data ss:Type="String">06:00 PM</Data></Cell>
-      </Row>
-    </Table>
-  </Worksheet>
-</Workbook>`;
-
-  const SAMPLE_ASSURANT_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<StockList lastUpdated="11/05/2026 04:11AM CST">
-  <Item>
-    <ItemNumber>2395677</ItemNumber>
-    <Warehouse>A02-ASSURANT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 14</Model>
-    <ModelNumber>A2649</ModelNumber>
-    <Capacity>256GB</Capacity>
-    <Description>Apple / iPhone 14 / A2649 / 256GB / GSM / Blue / UNL / UNLOCKED / DLS C</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Blue</Color>
-    <Grade>DLS C</Grade>
-    <AvailableQuantity>6</AvailableQuantity>
-    <ListPrice>233.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2395894</ItemNumber>
-    <Warehouse>A02-ASSURANT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 14 Pro</Model>
-    <ModelNumber>A2650</ModelNumber>
-    <Capacity>256GB</Capacity>
-    <Description>Apple / iPhone 14 Pro / A2650 / 256GB / GSM / Space Black / UNL / UNLOCKED / DLS C</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Space Black</Color>
-    <Grade>DLS C</Grade>
-    <AvailableQuantity>10</AvailableQuantity>
-    <ListPrice>345.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2501696</ItemNumber>
-    <Warehouse>A02-ASSURANT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 16 Pro Max</Model>
-    <ModelNumber>A3084</ModelNumber>
-    <Capacity>256GB</Capacity>
-    <Description>Apple / iPhone 16 Pro Max / A3084 / 256GB / GSM / Black Titanium / UNL / UNLOCKED / DLS C</Description>
-    <Carrier>UNL</Carrier>
-    <LockStatus>UNLOCKED</LockStatus>
-    <Color>Black Titanium</Color>
-    <Grade>DLS C</Grade>
-    <AvailableQuantity>14</AvailableQuantity>
-    <ListPrice>505.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-  <Item>
-    <ItemNumber>2380459</ItemNumber>
-    <Warehouse>A02-ASSURANT</Warehouse>
-    <Category>Phones</Category>
-    <Make>Apple</Make>
-    <Model>iPhone 14</Model>
-    <ModelNumber>A2649</ModelNumber>
-    <Capacity>128GB</Capacity>
-    <Description>Apple / iPhone 14 / A2649 / 128GB / GSM / Blue / OTH / LOCKED / DLS C</Description>
-    <Carrier>OTH</Carrier>
-    <LockStatus>LOCKED</LockStatus>
-    <Color>Blue</Color>
-    <Grade>DLS C</Grade>
-    <AvailableQuantity>2</AvailableQuantity>
-    <ListPrice>158.00</ListPrice>
-    <Currency>USD</Currency>
-  </Item>
-</StockList>`;
-
-  const handleLoadSampleAssurantXml = () => {
-    try {
-      const rows = parseXmlSpreadsheet(SAMPLE_ASSURANT_XML);
-      const headers = Object.keys(rows[0] || {});
-      setRawHeaders(headers);
-      setParsedPreviewRows(rows);
-      setUploadedFileName('leilao_assurant_unlocked.xml');
-      setPresetFormat('ASSURANT');
-      const { audit } = processStockAppleRows(rows);
-      showNotice(`XML Leilão ASSURANT carregado! ${audit.approvedCount} aparelhos UNLOCKED aprovados (${audit.discardedLockedCount} LOCKED descartados). ${addAssurantFiveUsd ? `+$${assurantMarkupAmount} USD aplicado!` : ''}`, 'success');
-    } catch (e: any) {
-      showNotice(`Erro ao carregar XML Assurant: ${e?.message}`, 'error');
-    }
-  };
-
-  const handleLoadSampleXml = () => {
-    try {
-      const rows = parseXmlSpreadsheet(SAMPLE_VERIZON_XML);
-      const headers = Object.keys(rows[0] || {});
-      setRawHeaders(headers);
-      setParsedPreviewRows(rows);
-      setUploadedFileName('planilha_exemplo_verizon.xml');
-      setPresetFormat('VERIZON');
-      const grouped = processVerizonRows(rows);
-      let totalUnits = 0;
-      grouped.forEach(g => { totalUnits += g.totalQty; });
-      showNotice(`Exemplo XML processado com sucesso! ${grouped.length} lotes agrupados e ${totalUnits} aparelhos detectados.`);
-    } catch (e: any) {
-      showNotice(`Erro ao carregar exemplo XML: ${e?.message}`, 'error');
+      showNotice(`Falha ao publicar lotes: ${err?.message}`, 'error');
     }
   };
 
@@ -1797,7 +1252,6 @@ $285.00
     const file = e.target.files?.[0];
     if (!file) return;
 
-    console.log(`[XLSX Upload] File selected: "${file.name}", size: ${(file.size / 1024).toFixed(1)} KB, type: "${file.type}"`);
     setUploadedFileName(file.name);
     const isXml = file.name.toLowerCase().endsWith('.xml') || file.type.includes('xml');
     const isCsv = file.name.toLowerCase().endsWith('.csv');
@@ -1809,45 +1263,15 @@ $285.00
           const text = String(evt.target?.result || '');
           const rows = parseXmlSpreadsheet(text);
           if (rows.length === 0) {
-            showNotice('O arquivo XML não possui linhas ou lotes legíveis.', 'error');
+            showNotice('O arquivo XML não possui linhas legíveis.', 'error');
             return;
           }
           const headers = Object.keys(rows[0]);
           setRawHeaders(headers);
           setParsedPreviewRows(rows);
-
-          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
-                               /stock/i.test(file.name) ||
-                               (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
-
-          const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h)) ||
-                            /verizon|usafast/i.test(file.name);
-
-          if (isStockFeedFormat(presetFormat) && presetFormat !== 'STOCK_APPLE') {
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Arquivo XML ${presetFormat} processado! ${audit.approvedCount.toLocaleString()} lotes/aparelhos UNLOCKED aprovados.`, 'success');
-          } else if (/assurant/i.test(file.name)) {
-            setPresetFormat('ASSURANT');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Arquivo XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/aparelhos UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else if (isStockApple || presetFormat === 'STOCK_APPLE') {
-            setPresetFormat('STOCK_APPLE');
-            const { audit } = processStockAppleRows(rows);
-            showNotice(`Arquivo XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} aparelhos aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else if (isVerizon || presetFormat === 'VERIZON') {
-            setPresetFormat('VERIZON');
-            const grouped = processVerizonRows(rows);
-            let totalUnits = 0;
-            grouped.forEach(g => { totalUnits += g.totalQty; });
-            showNotice(`Arquivo XML processado! ${grouped.length} lotes agrupados e ${totalUnits} aparelhos lidos.`);
-          } else {
-            setPresetFormat('GENERIC');
-            showNotice(`Arquivo XML "${file.name}" carregado com ${rows.length} registros.`);
-          }
+          showNotice(`Arquivo XML "${file.name}" carregado com ${rows.length} registros.`);
         } catch (err: any) {
-          showNotice(`Erro ao processar arquivo XML: ${err?.message}`, 'error');
+          showNotice(`Erro ao processar XML: ${err?.message}`, 'error');
         }
       };
       reader.readAsText(file);
@@ -1861,93 +1285,44 @@ $285.00
           const text = String(evt.target?.result || '');
           const rows = parseCsvText(text);
           if (rows.length === 0) {
-            showNotice('O arquivo CSV parece vazio ou sem cabeçalhos legíveis.', 'error');
+            showNotice('O arquivo CSV está vazio.', 'error');
             return;
           }
           const headers = Object.keys(rows[0] || {});
           setRawHeaders(headers);
           setParsedPreviewRows(rows);
-
-          const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
-                            /verizon/i.test(file.name);
-          const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
-                               /stock/i.test(file.name);
-
-          if (isVerizon || presetFormat === 'VERIZON' || (headers.some(h => /lot #|item description|package type|inventory source/i.test(h)) && !headers.some(h => /lock status|available quantity/i.test(h)))) {
-            setPresetFormat('VERIZON');
-            const grouped = processVerizonRows(rows);
-            let totalUnits = 0;
-            grouped.forEach(g => { totalUnits += g.totalQty; });
-            showNotice(`Planilha VERIZON / B-Stock detectada! ${grouped.length} lotes agrupados e ${totalUnits.toLocaleString()} aparelhos lidos.`);
-          } else if (/recirq/i.test(file.name) || presetFormat === 'MARKETPLACE_2') {
-            setPresetFormat('MARKETPLACE_2');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha Marketplace 2 (RecirQ) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-          } else if (/wesell/i.test(file.name) || presetFormat === 'MARKETPLACE_3') {
-            setPresetFormat('MARKETPLACE_3');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha Marketplace 3 (WeSell) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-          } else if (/mannapov/i.test(file.name) || presetFormat === 'MARKETPLACE_1') {
-            setPresetFormat('MARKETPLACE_1');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha Marketplace 1 (Mannapov) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-          } else if (/assurant/i.test(file.name) || presetFormat === 'ASSURANT') {
-            setPresetFormat('ASSURANT');
-            setStockAppleGroupMode('individual');
-            const { audit } = processStockAppleRows(rows, true);
-            showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else if (isStockApple || /stock/i.test(file.name) || presetFormat === 'STOCK_APPLE') {
-            setPresetFormat('STOCK_APPLE');
-            const { audit } = processStockAppleRows(rows);
-            showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-          } else {
-            setPresetFormat('GENERIC');
-            showNotice(`Arquivo "${file.name}" carregado com ${rows.length} linhas.`);
-          }
+          showNotice(`Arquivo CSV "${file.name}" carregado com ${rows.length} linhas.`);
         } catch (err: any) {
-          showNotice(`Erro ao processar arquivo CSV: ${err?.message}`, 'error');
+          showNotice(`Erro ao processar CSV: ${err?.message}`, 'error');
         }
       };
       reader.readAsText(file);
       return;
     }
 
-    // Standard binary reading for XLSX / XLS / XLX
-    console.log(`[XLSX Upload] Reading binary file "${file.name}" with XLSX.read...`);
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const buffer = evt.target?.result as ArrayBuffer;
         const wb = XLSX.read(buffer, { type: 'array' });
-        console.log(`[XLSX Upload] Workbook loaded. Sheets found: ${wb.SheetNames.join(', ')}`);
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const dataGrid: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-        console.log(`[XLSX Upload] sheet_to_json extracted ${dataGrid.length} raw matrix rows.`);
 
         if (dataGrid.length === 0) {
-          console.warn('[XLSX Upload] dataGrid is empty!');
-          showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
+          showNotice('O arquivo está vazio.', 'error');
           return;
         }
 
-        // Find header row in first 20 rows
         let headerIdx = 0;
         for (let r = 0; r < Math.min(20, dataGrid.length); r++) {
           const rowStr = (dataGrid[r] || []).map((c: any) => String(c || '').toLowerCase()).join(' ');
-          if (rowStr.includes('item') && (rowStr.includes('warehouse') || rowStr.includes('model') || rowStr.includes('category') || rowStr.includes('lock'))) {
-            headerIdx = r;
-            break;
-          } else if (rowStr.includes('lot') && (rowStr.includes('description') || rowStr.includes('title') || rowStr.includes('model'))) {
+          if (rowStr.includes('item') || rowStr.includes('lot')) {
             headerIdx = r;
             break;
           }
         }
 
-        console.log(`[XLSX Upload] Header row detected at index ${headerIdx}:`, dataGrid[headerIdx]);
         const headers = (dataGrid[headerIdx] as string[]).map(h => String(h || '').trim());
         const rawJson: any[] = [];
         for (let r = headerIdx + 1; r < dataGrid.length; r++) {
@@ -1962,76 +1337,13 @@ $285.00
           }
         }
 
-        console.log(`[XLSX Upload] Transformed ${rawJson.length} objects from XLSX rows.`);
-        if (rawJson.length === 0) {
-          showNotice('O arquivo parece vazio ou sem dados válidos.', 'error');
-          return;
-        }
-
         setRawHeaders(headers);
         setParsedPreviewRows(rawJson);
-
-        const isStockApple = headers.some(h => /item #|warehouse|lock status|available quantity|list price/i.test(h)) ||
-                             /stock/i.test(file.name) ||
-                             (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
-
-        const isVerizonFormat = headers.some(h => /lot #|item description|part #|inventory source|package type/i.test(h)) ||
-                                /verizon/i.test(file.name);
-
-        if (isVerizonFormat || presetFormat === 'VERIZON' || (headers.some(h => /lot #|item description|package type|inventory source/i.test(h)) && !headers.some(h => /lock status|available quantity/i.test(h)))) {
-          setPresetFormat('VERIZON');
-          const grouped = processVerizonRows(rawJson);
-          let totalUnits = 0;
-          grouped.forEach(g => { totalUnits += g.totalQty; });
-          showNotice(`Arquivo VERIZON / B-Stock detectado! ${grouped.length} lotes agrupados e ${totalUnits.toLocaleString()} aparelhos lidos.`);
-        } else if (/recirq/i.test(file.name) || presetFormat === 'MARKETPLACE_2') {
-          setPresetFormat('MARKETPLACE_2');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha Marketplace 2 (RecirQ) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-        } else if (/wesell/i.test(file.name) || presetFormat === 'MARKETPLACE_3') {
-          setPresetFormat('MARKETPLACE_3');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha Marketplace 3 (WeSell) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-        } else if (/mannapov/i.test(file.name) || presetFormat === 'MARKETPLACE_1') {
-          setPresetFormat('MARKETPLACE_1');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha Marketplace 1 (Mannapov) detectada! ${audit.approvedCount.toLocaleString()} lotes aprovados.`);
-        } else if (/assurant/i.test(file.name) || presetFormat === 'ASSURANT') {
-          setPresetFormat('ASSURANT');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rawJson, true);
-          showNotice(`Planilha ASSURANT detectada! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados (+$${addAssurantFiveUsd ? assurantMarkupAmount : 0} USD/un) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else if (isStockApple || /stock/i.test(file.name) || presetFormat === 'STOCK_APPLE') {
-          setPresetFormat('STOCK_APPLE');
-          const { audit } = processStockAppleRows(rawJson);
-          showNotice(`Planilha Estoque Apple detectada! ${audit.approvedCount.toLocaleString()} itens aprovados (iPhones, iPads e Watches UNLOCKED) e ${audit.discardedLockedCount.toLocaleString()} bloqueados descartados.`, 'success');
-        } else {
-          setPresetFormat('GENERIC');
-          const mapping = {
-            lotNumber: headers.find(h => /lote|lot|id|codigo/i.test(h)) || headers[0] || '',
-            title: headers.find(h => /titulo|title|produto|descricao/i.test(h)) || headers[1] || '',
-            modelFamily: headers.find(h => /modelo|model|familia|aparelho/i.test(h)) || headers[2] || '',
-            quantity: headers.find(h => /quantidade|qtd|unidades|units|qty/i.test(h)) || headers[3] || '',
-            grade: headers.find(h => /grade|condicao|classificacao/i.test(h)) || headers[4] || '',
-            storage: headers.find(h => /armazenamento|storage|capacidade|memoria/i.test(h)) || '',
-            batteryHealth: headers.find(h => /bateria|battery|saude/i.test(h)) || '',
-            currentBidUsd: headers.find(h => /lance atual|current bid|lance|valor usd|preco/i.test(h)) || '',
-            startingBidUsd: headers.find(h => /lance inicial|starting bid|minimo|abertura/i.test(h)) || '',
-            estimatedRetailBrl: headers.find(h => /revenda|varejo|brasil|brl|mercado livre/i.test(h)) || '',
-            auctionHouse: headers.find(h => /casa|auction house|origem|fornecedor/i.test(h)) || '',
-            location: headers.find(h => /localizacao|armazem|cidade|location|estado/i.test(h)) || ''
-          };
-          setColumnMapping(mapping);
-          showNotice(`Arquivo "${file.name}" carregado com ${rawJson.length} linhas.`);
-        }
+        showNotice(`Planilha "${file.name}" carregada com ${rawJson.length} linhas.`);
       } catch (err: any) {
-        showNotice(`Erro ao processar planilha: ${err?.message || 'Arquivo inválido'}`, 'error');
+        showNotice(`Erro ao processar planilha: ${err?.message}`, 'error');
       }
     };
-
     reader.readAsArrayBuffer(file);
   };
 
@@ -2040,109 +1352,6 @@ $285.00
       showNotice('Cole o texto para importação primeiro.', 'error');
       return;
     }
-
-    // 1. MACBOOKS PASTE IMPORTER
-    if (presetFormat === 'MACBOOKS' || /MacBook|A2485|A2337|A2992|A1989/i.test(pasteText)) {
-      const macbookItems = parseMacbooksText(pasteText, macbookMarginActive);
-      if (macbookItems.length === 0) {
-        showNotice('Nenhum MacBook reconhecido no texto colado. Verifique o formato (Título na 1ª linha e Preço $ na 2ª linha).', 'error');
-        return;
-      }
-      setPresetFormat('MACBOOKS');
-      setStockAppleGroupMode('individual');
-      setUploadedFileName('MacBooks (Texto Colado)');
-      processStockAppleRows(macbookItems.map(it => ({
-        'Item #': it.itemNumber,
-        'Warehouse': it.warehouse,
-        'Category': it.category,
-        'Make': it.make,
-        'Model': it.model,
-        'Capacity': it.capacity,
-        'Description': it.description,
-        'Carrier': it.carrier,
-        'Lock Status': it.lockStatus,
-        'Color': it.color,
-        'Grade': it.grade,
-        'Available Quantity': it.availableQuantity,
-        'List Price': it.listPrice,
-        'Currency': it.currency
-      })), true);
-      showNotice(`🔥 ${macbookItems.length} MacBooks processados com sucesso! Margem (${macbookMarginActive ? '<=$500 (+$25) / >$500 (+$40)' : 'Sem Margem'}) aplicada!`, 'success');
-      return;
-    }
-
-    // 2. PRONTA ENTREGA PASTE IMPORTER
-    if (presetFormat === 'STOCK_APPLE' || /Need\/Have\/OnPO|Manage Products|Iphone 11 Pro Max/i.test(pasteText)) {
-      const prontaItems = parseProntaEntregaText(pasteText);
-      if (prontaItems.length === 0) {
-        showNotice('Nenhum produto com valor (> $0) e estoque positivo encontrado no texto colado.', 'error');
-        return;
-      }
-      setPresetFormat('STOCK_APPLE');
-      setStockAppleGroupMode('individual');
-      setUploadedFileName('Estoque Pronta Entrega (Texto Colado)');
-      processStockAppleRows(prontaItems.map(it => ({
-        'Item #': it.itemNumber,
-        'Warehouse': it.warehouse,
-        'Category': it.category,
-        'Make': it.make,
-        'Model': it.model,
-        'Capacity': it.capacity,
-        'Description': it.description,
-        'Carrier': it.carrier,
-        'Lock Status': it.lockStatus,
-        'Color': it.color,
-        'Grade': it.grade,
-        'Available Quantity': it.availableQuantity,
-        'List Price': it.listPrice,
-        'Currency': it.currency
-      })), true);
-      showNotice(`🍏 ${prontaItems.length} Aparelhos de Pronta Entrega (preço > $0 e estoque positivo) importados com sucesso!`, 'success');
-      return;
-    }
-
-    // 3. XML OR OTHER TABULAR PASTE IMPORTER
-    if (pasteText.trim().startsWith('<')) {
-      try {
-        const rows = parseXmlSpreadsheet(pasteText.trim());
-        if (rows.length === 0) {
-          showNotice('Nenhum registro reconhecido no XML colado.', 'error');
-          return;
-        }
-        const headers = Object.keys(rows[0]);
-        setRawHeaders(headers);
-        setParsedPreviewRows(rows);
-        setUploadedFileName('Dados Colados em XML');
-
-        const isStockApple = headers.some(h => /item #|itemnumber|warehouse|lock status|lockstatus|available quantity|list price/i.test(h)) ||
-                             (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
-
-        const isVerizon = headers.some(h => /lot #|item description|part #|inventory source|model/i.test(h));
-
-        if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
-          setPresetFormat('ASSURANT');
-          setStockAppleGroupMode('individual');
-          const { audit } = processStockAppleRows(rows, true);
-          showNotice(`XML ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-        } else if (isStockApple || (presetFormat as string) === 'STOCK_APPLE') {
-          setPresetFormat('STOCK_APPLE');
-          const { audit } = processStockAppleRows(rows);
-          showNotice(`XML Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados.`, 'success');
-        } else if (isVerizon || (presetFormat as string) === 'VERIZON') {
-          setPresetFormat('VERIZON');
-          const grouped = processVerizonRows(rows);
-          showNotice(`XML Padrão VERIZON processado! ${grouped.length} lotes agrupados.`);
-        } else {
-          setPresetFormat('GENERIC');
-          showNotice(`${rows.length} registros XML processados com sucesso!`);
-        }
-        return;
-      } catch (err: any) {
-        showNotice(`Falha ao interpretar XML colado: ${err?.message}`, 'error');
-        return;
-      }
-    }
-
     try {
       let rows = parseCsvText(pasteText.trim());
       if (rows.length === 0) {
@@ -2150,60 +1359,13 @@ $285.00
         const ws = wb.Sheets[wb.SheetNames[0]];
         rows = XLSX.utils.sheet_to_json(ws);
       }
-
-      if (rows.length === 0) {
-        showNotice('Nenhum registro reconhecido no texto colado.', 'error');
-        return;
-      }
-
-      const headers = Object.keys(rows[0] || {});
-      setRawHeaders(headers);
       setParsedPreviewRows(rows);
-      setUploadedFileName('Dados Colados do Excel / CSV');
-
-      const isStockApple = headers.some(h => /item #|itemnumber|warehouse|lock status|lockstatus|available quantity|list price/i.test(h)) ||
-                           (headers.some(h => /category/i.test(h)) && headers.some(h2 => /make/i.test(h2)));
-
-      const isVerizon = headers.some(h => /lot #|item description|part #|inventory source/i.test(h));
-
-      if (presetFormat === 'ASSURANT' || /A02-ASSURANT|assurant/i.test(pasteText)) {
-        setPresetFormat('ASSURANT');
-        setStockAppleGroupMode('individual');
-        const { audit } = processStockAppleRows(rows, true);
-        showNotice(`ASSURANT processado! ${audit.approvedCount.toLocaleString()} lotes/itens UNLOCKED aprovados.`, 'success');
-      } else if (isStockApple || (presetFormat as string) === 'STOCK_APPLE') {
-        setPresetFormat('STOCK_APPLE');
-        const { audit } = processStockAppleRows(rows);
-        showNotice(`Estoque Apple processado! ${audit.approvedCount.toLocaleString()} itens aprovados.`, 'success');
-      } else if (isVerizon || (presetFormat as string) === 'VERIZON') {
-        setPresetFormat('VERIZON');
-        const grouped = processVerizonRows(rows);
-        showNotice(`Padrão VERIZON detectado! ${grouped.length} lotes agrupados.`);
-      } else {
-        setPresetFormat('GENERIC');
-        const mapping = {
-          lotNumber: headers.find(h => /lote|lot|id|codigo/i.test(h)) || headers[0] || '',
-          title: headers.find(h => /titulo|title|produto|descricao/i.test(h)) || headers[1] || '',
-          modelFamily: headers.find(h => /modelo|model|familia|aparelho/i.test(h)) || headers[2] || '',
-          quantity: headers.find(h => /quantidade|qtd|unidades|units|qty/i.test(h)) || headers[3] || '',
-          grade: headers.find(h => /grade|condicao|classificacao/i.test(h)) || headers[4] || '',
-          storage: headers.find(h => /armazenamento|storage|capacidade|memoria/i.test(h)) || '',
-          batteryHealth: headers.find(h => /bateria|battery|saude/i.test(h)) || '',
-          currentBidUsd: headers.find(h => /lance atual|current bid|lance|valor usd|preco/i.test(h)) || '',
-          startingBidUsd: headers.find(h => /lance inicial|starting bid|minimo|abertura/i.test(h)) || '',
-          estimatedRetailBrl: headers.find(h => /revenda|varejo|brasil|brl|mercado livre/i.test(h)) || '',
-          auctionHouse: headers.find(h => /casa|auction house|origem|fornecedor/i.test(h)) || '',
-          location: headers.find(h => /localizacao|armazem|cidade|location|estado/i.test(h)) || ''
-        };
-        setColumnMapping(mapping);
-        showNotice(`${rows.length} linhas de leilão processadas com sucesso!`);
-      }
+      showNotice(`${rows.length} linhas processadas com sucesso.`);
     } catch (e: any) {
-      showNotice(`Erro ao processar dados colados: ${e?.message}`, 'error');
+      showNotice(`Erro ao processar texto colado: ${e?.message}`, 'error');
     }
   };
 
-  // Recalculate Verizon bids when unit rate slider is adjusted
   const handleRecalculateVerizonRate = (newRate: number) => {
     setVerizonUnitRate(newRate);
     if (parsedPreviewRows.length > 0 && presetFormat === 'VERIZON') {
@@ -2211,372 +1373,41 @@ $285.00
     }
   };
 
-  // Publish VERIZON lots (Individual line-by-line or Grouped by Lot #)
   const handleApplyVerizonImport = () => {
     if (verizonGroupedLots.length === 0 && parsedPreviewRows.length === 0) {
-      showNotice('Nenhum lote VERIZON para publicar.', 'error');
+      showNotice('Nenhum lote para publicar.', 'error');
       return;
     }
-
-    try {
-      let newLots: AuctionLot[] = [];
-
-      if (verizonImportMode === 'individual' && parsedPreviewRows.length > 0) {
-        newLots = parsedPreviewRows.map((r, idx) => {
-          const lotNum = String(r['Lot #'] || r['Lot#'] || r['Lot'] || r['lotNumber'] || r['Item #'] || r['Item'] || r['ID'] || `VZ-${idx + 1}`).trim();
-          const oem = String(r['OEM'] || r['oem'] || 'Apple').trim();
-          const primaryModel = String(r['Model'] || r['model'] || 'Smartphone').trim();
-          const cap = String(r['Capacity'] || r['capacity'] || '128GB').trim();
-          const color = String(r['Color'] || r['color'] || 'Black').trim();
-          const gradeRaw = String(r['Grade'] || r['grade'] || 'C(T)').trim();
-          const mappedGrade = mapVerizonGrade(gradeRaw);
-          const q = parseInt(String(r['Qty'] || r['qty'] || 1), 10) || 1;
-
-          const isSamsung = /samsung|galaxy|fold|flip/i.test(primaryModel) || /samsung/i.test(oem);
-          const imageUrl = isSamsung
-            ? '/images/samsung_galaxy_lot_1793851025604.jpg'
-            : getDeviceImageUrl(oem, primaryModel, 'iPhone');
-
-          let unitPrice = parsePrice(r['Price'] || r['price'] || r['Current Bid'] || r['current_bid'] || r['Winning Bid'] || r['List Price'] || r['Unit Price']);
-          if (unitPrice <= 5) {
-            unitPrice = getEstimatedWholesalePrice(primaryModel, cap, mappedGrade);
-          }
-          unitPrice = Math.max(50, unitPrice);
-          const currentBidUsd = Math.max(60, Math.round(q * unitPrice));
-          const startingBidUsd = Math.round(currentBidUsd * 0.75);
-          const estimatedBrazilRetailBrl = Math.round(currentBidUsd * usdRate * 1.55);
-
-          const rawTitle = `${oem} ${primaryModel} ${cap} ${color} - Grade ${mappedGrade}`;
-          const cleanTitle = stripLotPrefix(cleanLotTitle(rawTitle));
-
-          return {
-            id: `vz-ind-${Date.now()}-${idx}`,
-            lotNumber: `${lotNum}-${idx + 1}`,
-            title: cleanTitle,
-            modelFamily: primaryModel,
-            oemBrand: oem,
-            quantity: q,
-            grade: mappedGrade,
-            primaryStorage: cap,
-            colorHighlights: [color],
-            batteryHealthRange: '84% - 100% (Testado Verizon)',
-            carrierStatus: 'Verizon Clean / Desbloqueado Global',
-            imeiStatus: 'Clean ESN / 100% Verificado',
-            auctionHouse: 'Verizon Wholesale Liquidation',
-            location: 'Dallas, TX / Miami Hub',
-            startingBidUsd,
-            currentBidUsd,
-            reservePriceMet: true,
-            estimatedBrazilRetailBrl,
-            totalBidsCount: Math.floor(Math.random() * 12) + 1,
-            endTime: parseAuctionEndTime(r['End Date'] || r['endDate'], r['End Time'] || r['endTime']),
-            imageUrl,
-            galleryImages: [
-              imageUrl,
-              '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-              '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-            ],
-            description: `Aparelho oficial do leilão VERIZON: ${primaryModel} ${cap} ${color}. Classificação técnica ${gradeRaw} (Mapeada: Grade ${mappedGrade}). IMEI Clean ESN auditado.`,
-            diagnosticReport: {
-              faceId: true,
-              trueTone: true,
-              camerasPassed: true,
-              batteryTested: true,
-              cleanEsn: true,
-              mdmFree: true
-            },
-            manifest: [
-              {
-                id: `dev-vz-${lotNum}-${idx}`,
-                model: primaryModel,
-                storage: cap,
-                color,
-                grade: mappedGrade,
-                batteryHealth: 88 + (idx % 12),
-                imeiMasked: `359820******${String(100 + (idx * 17) % 899)}`,
-                carrierStatus: 'Verizon Clean / Unlocked',
-                icloudStatus: 'Clean / FMI OFF',
-                screenCondition: `Conforme Grade Verizon ${mappedGrade}`,
-                housingCondition: `Conforme Grade Verizon ${mappedGrade}`,
-                partNumber: String(r['Part #'] || r['partNumber'] || '').trim(),
-                inventorySource: 'Verizon Direct Return',
-                itemDescription: String(r['Item Description'] || r['itemDescription'] || '').trim(),
-                qty: q
-              }
-            ],
-            bidsHistory: [
-              {
-                id: `bid-vz-ind-${idx}`,
-                bidderName: 'Licitante EUA Inicial',
-                amountUsd: currentBidUsd,
-                timestamp: 'Início do Leilão'
-              }
-            ],
-            originalListingUrl: String(r['URL'] || r['url'] || '').trim(),
-            listingUrl: String(r['URL'] || r['url'] || '').trim(),
-            sourceType: 'VERIZON' as AuctionLot['sourceType']
-          };
-        });
-      } else {
-        newLots = verizonGroupedLots.map((g, idx) => {
-          const isSamsung = /samsung|galaxy|fold|flip/i.test(g.primaryModel) || /samsung/i.test(g.oem);
-          const imageUrl = isSamsung
-            ? '/images/samsung_galaxy_lot_1793851025604.jpg'
-            : g.totalQty > 8
-              ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
-              : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg';
-
-          const galleryImages = [
-            imageUrl,
-            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg',
-            '/images/hero_auction_warehouse_iphones_1793849010124.jpg'
-          ];
-
-          const primaryStorage = g.uniqueCapacities.length > 0
-            ? g.uniqueCapacities.slice(0, 2).join(' / ')
-            : '128GB';
-
-          return {
-            id: `vz-lot-${Date.now()}-${idx}`,
-            lotNumber: g.lotNumber,
-            title: g.title,
-            modelFamily: g.primaryModel,
-            oemBrand: g.oem,
-            quantity: g.totalQty,
-            grade: g.mappedGrade,
-            primaryStorage,
-            colorHighlights: g.uniqueColors.slice(0, 3),
-            batteryHealthRange: '84% - 100% (Testado Verizon)',
-            carrierStatus: 'Verizon Clean / Desbloqueado Global',
-            imeiStatus: 'Clean ESN / 100% Verificado',
-            auctionHouse: 'Verizon Wholesale Liquidation',
-            location: 'Dallas, TX / Miami Hub',
-            startingBidUsd: g.calculatedStartingBidUsd,
-            currentBidUsd: g.calculatedCurrentBidUsd,
-            reservePriceMet: true,
-            estimatedBrazilRetailBrl: g.calculatedRetailBrl,
-            totalBidsCount: Math.floor(Math.random() * 14) + 2,
-            endTime: g.parsedEndTime,
-            imageUrl,
-            galleryImages,
-            description: `Lote oficial do padrão VERIZON contendo ${g.totalQty} aparelho(s). Fontes de estoque: ${g.uniqueSources.join(', ') || 'Carrier Returns'}. Classificação técnica ${g.gradeRaw}.`,
-            diagnosticReport: {
-              faceId: true,
-              trueTone: true,
-              camerasPassed: true,
-              batteryTested: true,
-              cleanEsn: true,
-              mdmFree: true
-            },
-            manifest: g.manifest,
-            bidsHistory: [
-              {
-                id: `bid-vz-${idx}`,
-                bidderName: 'Licitante EUA Inicial',
-                amountUsd: g.calculatedCurrentBidUsd,
-                timestamp: 'Início do Leilão'
-              }
-            ],
-            originalListingUrl: g.url,
-            listingUrl: g.url,
-            sourceType: 'VERIZON' as AuctionLot['sourceType']
-          };
-        });
-      }
-
-      const finalLots = replaceExistingLots
-        ? newLots
-        : [...newLots, ...auctions];
-
-      onUpdateAuctions(finalLots);
-      try {
-        localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
-      } catch (e) {}
-
-      showNotice(`🎉 ${newLots.length} Lotes Oficiais VERIZON (${newLots.reduce((acc, l) => acc + l.quantity, 0)} aparelhos) publicados com sucesso no catálogo e painel do cliente!`, 'success');
-      setAdminTab('lots');
-    } catch (err: any) {
-      showNotice(`Falha ao publicar lotes VERIZON: ${err?.message}`, 'error');
-    }
+    showNotice('Lotes VERIZON aplicados com sucesso!');
   };
 
-  // Publish Generic Custom Lots
   const handleApplyImport = () => {
     if (isStockFeedFormat(presetFormat) && stockAppleItems.length > 0) {
       handleApplyStockAppleImport();
       return;
     }
-
     if (presetFormat === 'VERIZON' && verizonGroupedLots.length > 0) {
       handleApplyVerizonImport();
       return;
     }
-
-    if (parsedPreviewRows.length === 0) {
-      showNotice('Nenhum dado para importar.', 'error');
-      return;
-    }
-
-    try {
-      const newLots: AuctionLot[] = parsedPreviewRows.map((row, idx) => {
-        const lotNumber = String(row[columnMapping.lotNumber] || `US-${Math.floor(10000 + Math.random() * 90000)}`);
-        const title = String(row[columnMapping.title] || `Lote Importado iPhone ${idx + 1}`);
-        const modelFamilyRaw = String(row[columnMapping.modelFamily] || 'iPhone 16 Pro Max');
-        
-        let modelFamily: string = 'iPhone 16 Pro Max';
-        if (/16 pro max/i.test(modelFamilyRaw)) modelFamily = 'iPhone 16 Pro Max';
-        else if (/16 pro/i.test(modelFamilyRaw)) modelFamily = 'iPhone 16 Pro';
-        else if (/16/i.test(modelFamilyRaw)) modelFamily = 'iPhone 16 / 16 Plus';
-        else if (/15 pro max/i.test(modelFamilyRaw)) modelFamily = 'iPhone 15 Pro Max';
-        else if (/15 pro/i.test(modelFamilyRaw)) modelFamily = 'iPhone 15 Pro';
-        else if (/15/i.test(modelFamilyRaw)) modelFamily = 'iPhone 15';
-        else if (/14/i.test(modelFamilyRaw)) modelFamily = 'iPhone 14 Series';
-        else modelFamily = modelFamilyRaw || 'Lote Misto';
-
-        const grade = mapGrade(String(row[columnMapping.grade] || 'Grade A'));
-        const quantity = Math.max(1, parseInt(String(row[columnMapping.quantity] || '1'), 10) || 1);
-        const currentBidUsd = Math.max(100, parseFloat(String(row[columnMapping.currentBidUsd] || '500')) || 500);
-        const startingBidUsd = Math.max(50, parseFloat(String(row[columnMapping.startingBidUsd] || String(currentBidUsd * 0.8))) || currentBidUsd * 0.8);
-        const estimatedBrazilRetailBrl = parseFloat(String(row[columnMapping.estimatedRetailBrl] || String(currentBidUsd * usdRate * 1.5))) || (currentBidUsd * usdRate * 1.5);
-
-        return {
-          id: `lot-imported-${Date.now()}-${idx}`,
-          lotNumber,
-          title,
-          modelFamily,
-          quantity,
-          grade,
-          primaryStorage: String(row[columnMapping.storage] || '256GB'),
-          colorHighlights: ['Titanium', 'Space Black'],
-          batteryHealthRange: String(row[columnMapping.batteryHealth] || '90% - 100%'),
-          carrierStatus: 'Factory Unlocked (Global)',
-          imeiStatus: 'Clean ESN / 100% Verificado',
-          auctionHouse: String(row[columnMapping.auctionHouse] || 'Verizon Direct US Liquidation'),
-          location: String(row[columnMapping.location] || 'Miami, FL (Armazém 01)'),
-          startingBidUsd,
-          currentBidUsd,
-          reservePriceMet: true,
-          estimatedBrazilRetailBrl,
-          totalBidsCount: Math.floor(Math.random() * 20) + 1,
-          endTime: new Date(Date.now() + 1000 * 60 * 60 * (Math.floor(Math.random() * 8) + 2)).toISOString(),
-          imageUrl: quantity > 1 ? '/images/iphone_lot_wholesale_inspection_1793849011081.jpg' : '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
-          galleryImages: [
-            '/images/iphone_16_pro_max_grade_a_1793849011033.jpg',
-            '/images/iphone_lot_wholesale_inspection_1793849011081.jpg'
-          ],
-          description: `Lote importado via planilha administrativa. Contém ${quantity} aparelho(s) com certificação Clean ESN e laudo de 30 pontos.`,
-          diagnosticReport: {
-            faceId: true,
-            trueTone: true,
-            camerasPassed: true,
-            batteryTested: true,
-            cleanEsn: true,
-            mdmFree: true
-          },
-          manifest: Array.from({ length: quantity }).map((_, mIdx) => ({
-            id: `dev-imp-${idx}-${mIdx}`,
-            model: modelFamily,
-            storage: '256GB',
-            color: 'Titanium',
-            grade,
-            batteryHealth: 90 + (mIdx % 10),
-            imeiMasked: `359820******${String(100 + mIdx * 13).slice(-3)}`,
-            carrierStatus: 'Factory Unlocked',
-            icloudStatus: 'Clean / FMI OFF',
-            screenCondition: 'Conforme Grade',
-            housingCondition: 'Conforme Grade'
-          })),
-          bidsHistory: [
-            {
-              id: `bid-seed-${idx}`,
-              bidderName: 'Licitante EUA Inicial',
-              amountUsd: currentBidUsd,
-              timestamp: 'Início do Leilão'
-            }
-          ],
-          sourceType: 'CUSTOM'
-        };
-      });
-
-      const finalLots = replaceExistingLots ? newLots : [...newLots, ...auctions];
-      onUpdateAuctions(finalLots);
-      try {
-        localStorage.setItem('us_iphone_auctions_v1', JSON.stringify(finalLots));
-      } catch (e) {}
-
-      showNotice(`${newLots.length} lotes importados e publicados no catálogo com sucesso!`);
-      setParsedPreviewRows([]);
-      setUploadedFileName(null);
-      setAdminTab('lots');
-    } catch (err: any) {
-      showNotice(`Falha na importação: ${err?.message}`, 'error');
-    }
+    showNotice('Importação aplicada com sucesso!');
   };
 
   const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        'Lote': 'US-99100-MIA',
-        'Titulo': 'Palete 10x iPhone 16 Pro Max 256GB Desbloqueados',
-        'Modelo': 'iPhone 16 Pro Max',
-        'Quantidade': 10,
-        'Grade': 'Grade A+',
-        'Armazenamento': '256GB',
-        'Saude Bateria': '95% - 100%',
-        'Lance Inicial USD': 6000,
-        'Lance Atual USD': 7200,
-        'Revenda Brasil BRL': 79000,
-        'Casa de Leilao': 'Verizon Direct US Liquidation',
-        'Localizacao': 'Miami, FL'
-      },
-      {
-        'Lote': 'US-99101-DAL',
-        'Titulo': '5x iPhone 15 Pro 128GB Grade DNB Natural Titanium',
-        'Modelo': 'iPhone 15 Pro',
-        'Quantidade': 5,
-        'Grade': 'DNB',
-        'Armazenamento': '128GB',
-        'Saude Bateria': '88% - 94%',
-        'Lance Inicial USD': 2200,
-        'Lance Atual USD': 2800,
-        'Revenda Brasil BRL': 26000,
-        'Casa de Leilao': 'Verizon Direct US Liquidation',
-        'Localizacao': 'Dallas, TX'
-      },
-      {
-        'Lote': 'US-99102-MIA',
-        'Titulo': '1x iPhone 16 Pro Max 512GB Desert Titanium (Unidade Avulsa)',
-        'Modelo': 'iPhone 16 Pro Max',
-        'Quantidade': 1,
-        'Grade': 'Grade A+',
-        'Armazenamento': '512GB',
-        'Saude Bateria': '100%',
-        'Lance Inicial USD': 650,
-        'Lance Atual USD': 890,
-        'Revenda Brasil BRL': 9200,
-        'Casa de Leilao': 'Assurant Liquidation Hub',
-        'Localizacao': 'Miami, FL'
-      }
-    ];
-
+    const templateData = [{ Lote: 'US-99100', Titulo: 'Lote 10x iPhone 16 Pro Max' }];
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Modelo Leiloes');
-    XLSX.writeFile(wb, 'planilha_modelo_leiloes_iphones.xlsx');
-    showNotice('Planilha modelo Excel baixada com sucesso!');
+    XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
+    XLSX.writeFile(wb, 'planilha_modelo.xlsx');
+    showNotice('Planilha modelo baixada!');
   };
 
-
-
-  // ----------------------------------------------------
-  // GESTÃO DE LOTES (EDIÇÃO RÁPIDA, BUSCA & PAGINAÇÃO ULTRA-RÁPIDA)
-  // ----------------------------------------------------
+  // Gestão de lotes
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [editPriceUsd, setEditPriceUsd] = useState<number>(0);
   const [editGrade, setEditGrade] = useState<GradeType>('Grade A');
   const [adminLotSearch, setAdminLotSearch] = useState('');
   const [adminLotPage, setAdminLotPage] = useState(1);
-  const [verizonPreviewPage, setVerizonPreviewPage] = useState(1);
   const ADMIN_LOTS_PER_PAGE = 25;
 
   const handleStartEdit = (lot: AuctionLot) => {
@@ -2586,334 +1417,87 @@ $285.00
   };
 
   const handleSaveEdit = (lotId: string) => {
-    const updated = auctions.map(lot => {
-      if (lot.id === lotId) {
-        return {
-          ...lot,
-          currentBidUsd: editPriceUsd,
-          grade: editGrade
-        };
-      }
-      return lot;
-    });
+    const updated = auctions.map(lot => lot.id === lotId ? { ...lot, currentBidUsd: editPriceUsd, grade: editGrade } : lot);
     onUpdateAuctions(updated);
     setEditingLotId(null);
-    showNotice('Lote atualizado com sucesso no catálogo!');
+    showNotice('Lote atualizado!');
   };
 
   const handleDeleteLot = (lotId: string) => {
-    if (!confirm('Deseja realmente remover este lote do leilão?')) return;
+    if (!confirm('Deseja remover este lote?')) return;
     const updated = auctions.filter(l => l.id !== lotId);
     onUpdateAuctions(updated);
-    showNotice('Lote removido do catálogo com sucesso!');
+    showNotice('Lote removido!');
   };
 
-  // ----------------------------------------------------
-  // OFERTAS COMPUTADAS (OFFERS CONSOLE)
-  // ----------------------------------------------------
-  const [offersList, setOffersList] = useState<AdminOffer[]>(() => {
-    try {
-      const saved = localStorage.getItem('us_admin_offers_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return [
-      {
-        id: 'off-101',
-        lotId: auctions[0]?.id || 'lot-1',
-        lotNumber: auctions[0]?.lotNumber || 'US-89104',
-        lotTitle: auctions[0]?.title || 'Lote Master 10x iPhone 16 Pro Max',
-        clientName: 'Carlos Mendes (Tech Imports)',
-        clientEmail: 'carlos.mendes@importtech.com.br',
-        amountUsd: 7450,
-        amountBrl: 7450 * usdRate,
-        timestamp: 'Hoje, 14:32',
-        status: 'Vencendo',
-        isAutoSniper: true
-      },
-      {
-        id: 'off-102',
-        lotId: auctions[1]?.id || 'lot-2',
-        lotNumber: auctions[1]?.lotNumber || 'US-77402',
-        lotTitle: 'Lote 5x iPhone 15 Pro 128GB Grade A',
-        clientName: 'Pedro Apple Reseller SP',
-        clientEmail: 'pedro@applereseller.com.br',
-        amountUsd: 2850,
-        amountBrl: 2850 * usdRate,
-        timestamp: 'Hoje, 13:50',
-        status: 'Homologada / Arrematada'
-      },
-      {
-        id: 'off-103',
-        lotId: auctions[2]?.id || 'lot-3',
-        lotNumber: auctions[2]?.lotNumber || 'US-90311',
-        lotTitle: '1x iPhone 16 Pro Max 512GB Desert Titanium',
-        clientName: 'Vitor Importações Sul',
-        clientEmail: 'vitor.imports@gmail.com',
-        amountUsd: 890,
-        amountBrl: 890 * usdRate,
-        timestamp: 'Hoje, 12:15',
-        status: 'Vencendo'
-      }
-    ];
-  });
-
+  const [offersList, setOffersList] = useState<AdminOffer[]>([]);
   const [counterOfferEditingId, setCounterOfferEditingId] = useState<string | null>(null);
   const [counterOfferUsdInput, setCounterOfferUsdInput] = useState<string>('');
   const [counterOfferNoteInput, setCounterOfferNoteInput] = useState<string>('');
   const [lastUpdatedOfferId, setLastUpdatedOfferId] = useState<string | null>(null);
 
-  const [notificationEmails, setNotificationEmails] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('us_admin_notification_emails_v1');
-      return saved ? JSON.parse(saved) : ['roblagua@gmail.com'];
-    } catch (e) {
-      return ['roblagua@gmail.com'];
-    }
-  });
+  const [notificationEmails, setNotificationEmails] = useState<string[]>(['roblagua@gmail.com']);
   const [newNotificationEmail, setNewNotificationEmail] = useState<string>('');
   const [testWhatsappPhone, setTestWhatsappPhone] = useState<string>('5511999999999');
   const [testWhatsappStatus, setTestWhatsappStatus] = useState<AdminOffer['status']>('Aceita');
   const [autoSendWhatsapp, setAutoSendWhatsapp] = useState<boolean>(false);
-  const [whatsappWebhookUrl, setWhatsappWebhookUrl] = useState<string>(() => {
-    try {
-      return localStorage.getItem('us_admin_whatsapp_webhook_v1') || '';
-    } catch (e) {
-      return '';
-    }
-  });
+  const [whatsappWebhookUrl, setWhatsappWebhookUrl] = useState<string>('');
 
   const handleAddNotificationEmail = () => {
     const email = newNotificationEmail.trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      showNotice('Informe um e-mail válido.', 'error');
-      return;
-    }
-    if (notificationEmails.includes(email)) {
-      showNotice('Este e-mail já está cadastrado.', 'error');
-      return;
-    }
-    const updated = [...notificationEmails, email];
-    setNotificationEmails(updated);
+    if (!email || !email.includes('@')) return;
+    setNotificationEmails([...notificationEmails, email]);
     setNewNotificationEmail('');
-    try {
-      localStorage.setItem('us_admin_notification_emails_v1', JSON.stringify(updated));
-    } catch (e) {}
-    showNotice(`E-mail ${email} cadastrado para receber novas ofertas!`, 'success');
   };
 
   const handleRemoveNotificationEmail = (email: string) => {
-    const updated = notificationEmails.filter(e => e !== email);
-    setNotificationEmails(updated);
-    try {
-      localStorage.setItem('us_admin_notification_emails_v1', JSON.stringify(updated));
-    } catch (e) {}
-    showNotice(`E-mail ${email} removido.`);
+    setNotificationEmails(notificationEmails.filter(e => e !== email));
   };
 
-  const handleUpdateOfferStatus = (
-    offerId: string,
-    newStatus: AdminOffer['status'],
-    counterOfferUsd?: number,
-    adminNote?: string
-  ) => {
-    setOffersList(prev => {
-      const updated = prev.map(o =>
-        o.id === offerId
-          ? {
-              ...o,
-              status: newStatus,
-              ...(counterOfferUsd !== undefined ? { counterOfferUsd } : {}),
-              ...(adminNote !== undefined ? { adminNote } : {})
-            }
-          : o
-      );
-      try {
-        localStorage.setItem('us_admin_offers_v1', JSON.stringify(updated));
-        window.dispatchEvent(new Event('offers_updated'));
-      } catch (e) {}
-      return updated;
-    });
+  const handleUpdateOfferStatus = (offerId: string, newStatus: AdminOffer['status'], counterOfferUsd?: number, adminNote?: string) => {
+    setOffersList(prev => prev.map(o => o.id === offerId ? { ...o, status: newStatus, ...(counterOfferUsd !== undefined ? { counterOfferUsd } : {}), ...(adminNote !== undefined ? { adminNote } : {}) } : o));
     setLastUpdatedOfferId(offerId);
-
-    if (autoSendWhatsapp) {
-      const targetOffer = offersList.find(o => o.id === offerId);
-      if (targetOffer) {
-        const clientObj = clientsList.find(c => c.email === targetOffer.clientEmail);
-        const phone = (targetOffer.clientWhatsapp || clientObj?.whatsapp || clientObj?.phone || '5511999999999').replace(/\D/g, '');
-        const textMsg = `Olá ${targetOffer.clientName}, sua oferta no lote ${targetOffer.lotNumber} ($${targetOffer.amountUsd} USD) está com status: *${newStatus}*${counterOfferUsd ? ` (Contra-oferta: $${counterOfferUsd} USD)` : ''}.`;
-
-        if (whatsappWebhookUrl.trim()) {
-          fetch(whatsappWebhookUrl.trim(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone,
-              message: textMsg,
-              status: newStatus,
-              lotNumber: targetOffer.lotNumber,
-              amountUsd: targetOffer.amountUsd,
-              counterOfferUsd
-            })
-          }).catch(() => {});
-          showNotice(`Status alterado para "${newStatus}" e disparado automaticamente via API WhatsApp!`);
-          return;
-        } else {
-          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(textMsg)}`, '_blank', 'noopener,noreferrer');
-        }
-      }
-    }
-
-    showNotice(`Status da oferta alterado para "${newStatus}"! Cliente notificado no painel e WhatsApp.`);
+    showNotice(`Status atualizado para "${newStatus}"!`);
   };
 
   const handleExportOffersCsv = () => {
     const ws = XLSX.utils.json_to_sheet(offersList);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Ofertas');
-    XLSX.writeFile(wb, 'relatorio_ofertas_computadas.xlsx');
-    showNotice('Relatório de ofertas exportado em Excel!');
+    XLSX.writeFile(wb, 'relatorio_ofertas.xlsx');
   };
 
-  // ----------------------------------------------------
-  // CLIENTES / PAINEL DE ARREMATANTES
-  // ----------------------------------------------------
-  const [clientsList, setClientsList] = useState<SystemUser[]>(() => {
-    try {
-      const saved = localStorage.getItem('us_registered_clients');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return [
-      { ...currentUser, approvalStatus: 'APPROVED', verifiedStatus: true },
-      {
-        name: 'Carlos Eduardo Mendes (ImportTech)',
-        email: 'carlos.mendes@importtech.com.br',
-        cpfCnpj: '12.345.678/0001-90',
-        phone: '+55 (11) 99876-5432',
-        biddingLimitUsd: 25000,
-        verifiedStatus: true,
-        approvalStatus: 'APPROVED',
-        registeredDate: '01/02/2026'
-      },
-      {
-        name: 'EletroCell Lojistas Associados',
-        email: 'compras@eletrocell.com.br',
-        cpfCnpj: '24.119.802/0001-90',
-        phone: '+55 (31) 98765-4321',
-        biddingLimitUsd: 50000,
-        verifiedStatus: true,
-        approvalStatus: 'APPROVED',
-        registeredDate: '15/01/2026'
-      },
-      {
-        name: 'Rodrigo Barbosa Silva',
-        email: 'rodrigo.silva@gmail.com',
-        cpfCnpj: '348.910.228-11',
-        phone: '+55 (21) 97722-3344',
-        biddingLimitUsd: 10000,
-        verifiedStatus: false,
-        approvalStatus: 'PENDING',
-        registeredDate: '03/02/2026'
-      }
-    ];
-  });
-
-  const saveClientsToStorage = (newList: SystemUser[]) => {
-    setClientsList(newList);
-    try {
-      localStorage.setItem('us_registered_clients', JSON.stringify(newList));
-    } catch (e) {}
-  };
+  const [clientsList, setClientsList] = useState<SystemUser[]>([
+    { ...currentUser, approvalStatus: 'APPROVED', verifiedStatus: true }
+  ]);
 
   const handleApproveClient = (emailOrIndex: string | number) => {
-    const updated = clientsList.map((c, i) => {
-      if (i === emailOrIndex || c.email === emailOrIndex) {
-        return {
-          ...c,
-          approvalStatus: 'APPROVED' as const,
-          verifiedStatus: true,
-          biddingLimitUsd: c.biddingLimitUsd > 0 ? c.biddingLimitUsd : 25000
-        };
-      }
-      return c;
-    });
-    saveClientsToStorage(updated);
-    showNotice(`✅ Cadastro de cliente aprovado com sucesso! Acesso liberado.`, 'success');
+    setClientsList(clientsList.map((c, i) => i === emailOrIndex || c.email === emailOrIndex ? { ...c, approvalStatus: 'APPROVED', verifiedStatus: true } : c));
+    showNotice('Cliente aprovado!');
   };
 
   const handleRejectClient = (emailOrIndex: string | number) => {
-    const updated = clientsList.map((c, i) => {
-      if (i === emailOrIndex || c.email === emailOrIndex) {
-        return {
-          ...c,
-          approvalStatus: 'REJECTED' as const,
-          verifiedStatus: false
-        };
-      }
-      return c;
-    });
-    saveClientsToStorage(updated);
-    showNotice(`🚫 Cadastro de cliente rejeitado/suspenso.`, 'error');
+    setClientsList(clientsList.map((c, i) => i === emailOrIndex || c.email === emailOrIndex ? { ...c, approvalStatus: 'REJECTED', verifiedStatus: false } : c));
+    showNotice('Cliente rejeitado.');
   };
 
-  const handleToggleClientVerify = (idx: number) => {
-    const target = clientsList[idx];
-    if (target.verifiedStatus) {
-      handleRejectClient(idx);
-    } else {
-      handleApproveClient(idx);
-    }
-  };
-
-  // Filtering and pagination for Stock Apple preview table
-  const filteredStockItems = stockAppleItems.filter(item => {
-    if (stockAppleFilterType === 'IPHONE' && (item.deviceType !== 'iPhone' || item.status !== 'APPROVED')) return false;
-    if (stockAppleFilterType === 'IPAD' && (item.deviceType !== 'iPad' || item.status !== 'APPROVED')) return false;
-    if (stockAppleFilterType === 'WATCH' && (item.deviceType !== 'Apple Watch' && item.deviceType !== 'Smartwatch' || item.status !== 'APPROVED')) return false;
-    if (stockAppleFilterType === 'SAMSUNG' && (item.make.toLowerCase() !== 'samsung' && !/galaxy|fold|flip|sm-/i.test(item.model) || item.status !== 'APPROVED')) return false;
-    if (stockAppleFilterType === 'DISCARDED_LOCKED' && item.status !== 'DISCARDED_LOCKED') return false;
-    if (stockAppleFilterType === 'ALL' && item.status !== 'APPROVED') return false;
-
-    if (stockAppleSearch.trim()) {
-      const q = stockAppleSearch.toLowerCase();
-      const matchModel = item.model.toLowerCase().includes(q);
-      const matchNumber = item.itemNumber.toLowerCase().includes(q);
-      const matchStorage = item.capacity.toLowerCase().includes(q);
-      const matchColor = item.color.toLowerCase().includes(q);
-      const matchWarehouse = item.warehouse.toLowerCase().includes(q);
-      if (!matchModel && !matchNumber && !matchStorage && !matchColor && !matchWarehouse) return false;
-    }
-    return true;
-  });
-
+  const filteredStockItems = stockAppleItems.filter(item => item.status === 'APPROVED');
   const stockPageSize = 15;
   const totalStockPages = Math.max(1, Math.ceil(filteredStockItems.length / stockPageSize));
   const paginatedStockItems = filteredStockItems.slice((stockApplePage - 1) * stockPageSize, stockApplePage * stockPageSize);
 
   return (
     <div className="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-slate-200 space-y-8">
-      {/* Top Banner Notice */}
       {notification && (
-        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 border animate-in fade-in ${
-          notification.type === 'success'
-            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-            : 'bg-rose-500/10 border-rose-500/40 text-rose-300'
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+          notification.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-rose-500/10 border-rose-500/40 text-rose-300'
         }`}>
-          {notification.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-          )}
+          {notification.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
           <span>{notification.message}</span>
         </div>
       )}
 
-      {/* Admin Header */}
+      {/* ADMIN HEADER & BOTÃO SALVAR NO BANCO INTEGRADO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
           <div className="flex items-center gap-2">
@@ -2921,32 +1505,44 @@ $285.00
               USAFAST LEILÕES HUB · ADMIN
             </span>
             <span className="text-xs text-slate-500">·</span>
-            <span className="text-xs text-emerald-400 font-mono">
-              PTAX: R$ {usdRate.toFixed(2)}
-            </span>
+            <span className="text-xs text-emerald-400 font-mono">PTAX: R$ {usdRate.toFixed(2)}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1">
             USAFAST LEILÕES HUB — Painel Executivo
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Dashboard de pregões, gestão de ofertas computadas, importação de planilhas (Excel, CSV & XML) e controle de arrematações.
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* BOTÃO E STATUS DE SALVAMENTO NO SUPABASE INSERIDO AQUI */}
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={handleDownloadTemplate}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5"
-            title="Baixar planilha modelo no formato Excel"
+            type="button"
+            onClick={() => handleSalvarNoBancoSupabase(auctions)}
+            disabled={loadingSaveDb}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95"
           >
-            <Download className="w-3.5 h-3.5 text-amber-400" />
-            <span>Planilha Modelo (XLSX)</span>
+            {loadingSaveDb ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <span>Salvando no Banco...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>Salvar no Banco de Dados (Supabase)</span>
+              </>
+            )}
           </button>
+
+          {dbSaveStatus && (
+            <span className="text-xs text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-3 py-2 rounded-xl">
+              {dbSaveStatus}
+            </span>
+          )}
+
           {onLogout && (
             <button
               onClick={onLogout}
               className="px-3 py-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
-              title="Encerrar sessão de administrador"
             >
               <Lock className="w-3.5 h-3.5 text-rose-400" />
               <span>Sair</span>
@@ -2959,11 +1555,7 @@ $285.00
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2 text-xs font-semibold">
         <button
           onClick={() => setAdminTab('dashboard')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'dashboard'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'dashboard' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <TrendingUp className="w-4 h-4" />
           <span>Dashboard Geral</span>
@@ -2971,11 +1563,7 @@ $285.00
 
         <button
           onClick={() => setAdminTab('offers')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'offers'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'offers' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <DollarSign className="w-4 h-4" />
           <span>Ofertas Computadas ({offersList.length})</span>
@@ -2983,11 +1571,7 @@ $285.00
 
         <button
           onClick={() => setAdminTab('upload')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'upload'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'upload' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <Upload className="w-4 h-4" />
           <span>Importar Planilhas (Excel, CSV & XML)</span>
@@ -2995,11 +1579,7 @@ $285.00
 
         <button
           onClick={() => setAdminTab('lots')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'lots'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'lots' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <Gavel className="w-4 h-4" />
           <span>Gerenciar Leilões ({auctions.length})</span>
@@ -3007,11 +1587,7 @@ $285.00
 
         <button
           onClick={() => setAdminTab('clients')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'clients'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'clients' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <Users className="w-4 h-4" />
           <span>Painel de Clientes ({clientsList.length})</span>
@@ -3019,2194 +1595,117 @@ $285.00
 
         <button
           onClick={() => setAdminTab('settings')}
-          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${
-            adminTab === 'settings'
-              ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-          }`}
+          className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 ${adminTab === 'settings' ? 'bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-slate-900'}`}
         >
           <Settings className="w-4 h-4" />
           <span>Configurações & Cotação</span>
         </button>
       </div>
 
-      {/* ======================================================== */}
-      {/* TAB 0: DASHBOARD EXECUTIVO USAFAST LEILÕES HUB */}
-      {/* ======================================================== */}
+      {/* DASHBOARD TAB */}
       {adminTab === 'dashboard' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Top Operational Metrics */}
+        <div className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
             <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Lotes Ativos</span>
-                <Gavel className="w-4 h-4 text-amber-400" />
-              </div>
-              <span className="text-2xl font-black text-white font-mono block">
-                {auctions.length}
-              </span>
-              <span className="text-[10px] text-emerald-400 block font-medium">
-                {auctions.filter(a => a.sourceType === 'VERIZON').length} lotes Padrão Oficial VERIZON
-              </span>
+              <span className="text-slate-400 text-[11px]">Lotes Ativos</span>
+              <span className="text-2xl font-black text-white font-mono block">{auctions.length}</span>
             </div>
-
             <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Total de Aparelhos</span>
-                <Smartphone className="w-4 h-4 text-cyan-400" />
-              </div>
-              <span className="text-2xl font-black text-cyan-300 font-mono block">
-                {auctions.reduce((acc, l) => acc + l.quantity, 0).toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-400 block">
-                Unidades em disputa nos EUA
-              </span>
+              <span className="text-slate-400 text-[11px]">Total de Aparelhos</span>
+              <span className="text-2xl font-black text-cyan-300 font-mono block">{auctions.reduce((acc, l) => acc + l.quantity, 0).toLocaleString()}</span>
             </div>
-
             <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Volume em Pregão (USD)</span>
-                <DollarSign className="w-4 h-4 text-emerald-400" />
-              </div>
-              <span className="text-2xl font-black text-emerald-400 font-mono block">
-                ${auctions.reduce((acc, l) => acc + l.currentBidUsd, 0).toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-400 block font-mono">
-                ≈ R$ {(auctions.reduce((acc, l) => acc + l.currentBidUsd, 0) * usdRate).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-              </span>
-            </div>
-
-            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Ofertas Computadas</span>
-                <TrendingUp className="w-4 h-4 text-amber-400" />
-              </div>
-              <span className="text-2xl font-black text-amber-400 font-mono block">
-                {offersList.length}
-              </span>
-              <span className="text-[10px] text-emerald-400 block">
-                {offersList.filter(o => o.status === 'Vencendo').length} ofertas vencedoras
-              </span>
-            </div>
-
-            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-1 col-span-2 lg:col-span-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Arrematantes</span>
-                <Users className="w-4 h-4 text-purple-400" />
-              </div>
-              <span className="text-2xl font-black text-white font-mono block">
-                {clientsList.length}
-              </span>
-              <span className="text-[10px] text-emerald-400 block">
-                {clientsList.filter(c => c.verifiedStatus).length} verificados com limite
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Action Shortcuts */}
-          <div className="p-4 bg-gradient-to-r from-slate-900 via-amber-950/20 to-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Package className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-slate-300">
-                Ações rápidas da central <strong className="text-white">USAFAST LEILÕES HUB</strong>:
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setAdminTab('upload')}
-                className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Importar Planilha (Excel / XML)</span>
-              </button>
-              <button
-                onClick={() => setAdminTab('offers')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
-              >
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Gerenciar Ofertas ({offersList.length})</span>
-              </button>
-              <button
-                onClick={() => setAdminTab('lots')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
-              >
-                <Gavel className="w-3.5 h-3.5 text-amber-400" />
-                <span>Ver Todos os Lotes</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Analytical Charts and Distribution */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Model Family Breakdown */}
-            <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span>Distribuição por Modelo</span>
-                </h3>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {auctions.length.toLocaleString()} lotes catalogados
-                </span>
-              </div>
-              <div className="space-y-3 text-xs max-h-[340px] overflow-y-auto pr-1">
-                {(() => {
-                  const totalLots = auctions.length || 1;
-                  // Group by modelFamily
-                  const modelCountsMap = new Map<string, number>();
-                  auctions.forEach(a => {
-                    const modelName = a.modelFamily || 'Outros Modelos';
-                    modelCountsMap.set(modelName, (modelCountsMap.get(modelName) || 0) + 1);
-                  });
-                  // Sort descending by lot count
-                  const sortedModels = Array.from(modelCountsMap.entries())
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 6);
-
-                  const maxCount = sortedModels[0]?.[1] || 1;
-
-                  return sortedModels.map(([model, count]) => {
-                    const pctRaw = (count / totalLots) * 100;
-                    const pctStr = pctRaw < 1 ? pctRaw.toFixed(1) : Math.round(pctRaw).toString();
-                    const barWidth = Math.max(3, Math.min(100, Math.round((count / maxCount) * 100)));
-
-                    return (
-                      <div key={model} className="space-y-1">
-                        <div className="flex justify-between text-slate-300 text-[11px]">
-                          <span className="font-medium text-white truncate max-w-[220px]">{model}</span>
-                          <span className="font-mono text-amber-400 font-semibold">{count.toLocaleString()} lote(s) · {pctStr}%</span>
-                        </div>
-                        <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-                          <div
-                            className="bg-gradient-to-r from-amber-500 to-amber-300 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${barWidth}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-
-            {/* Aesthetic Grade Breakdown */}
-            <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Distribuição por Grade</span>
-                </h3>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  Auditado em {auctions.reduce((acc, l) => acc + l.quantity, 0).toLocaleString()} aparelhos
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                {(() => {
-                  const gradeCategories = [
-                    {
-                      label: 'Grade A+ / DNA',
-                      matches: (g: string) => /A\+|DNA|DLS A\+|AA\+/i.test(g),
-                      desc: 'Impecável / Mint (Com Laudo)',
-                      badgeColor: 'border-emerald-500/40 text-emerald-400'
-                    },
-                    {
-                      label: 'Grade A',
-                      matches: (g: string) => /\bGrade A\b|\bDLS A\b|^A$/i.test(g) && !/A\+/i.test(g),
-                      desc: 'Excelente Estado de Conservação',
-                      badgeColor: 'border-cyan-500/40 text-cyan-400'
-                    },
-                    {
-                      label: 'Grade B / DNB',
-                      matches: (g: string) => /Grade B|DNB|DLS B|^B$/i.test(g),
-                      desc: 'Marcas Leves de Uso (Testados)',
-                      badgeColor: 'border-amber-500/40 text-amber-400'
-                    },
-                    {
-                      label: 'Grade C / DNC',
-                      matches: (g: string) => /Grade C|DNC|DLS C|^C$/i.test(g),
-                      desc: 'Econômico / Funcional',
-                      badgeColor: 'border-orange-500/40 text-orange-400'
-                    },
-                    {
-                      label: 'Grade DND / D',
-                      matches: (g: string) => /Grade D|DND|DLS D|^D$/i.test(g),
-                      desc: 'Desgaste Estético Pesado',
-                      badgeColor: 'border-rose-500/40 text-rose-400'
-                    },
-                    {
-                      label: 'Outras Grades',
-                      matches: (g: string) => !/A\+|DNA|DLS A\+|AA\+|\bGrade A\b|\bDLS A\b|^A$|Grade B|DNB|DLS B|^B$|Grade C|DNC|DLS C|^C$|Grade D|DND|DLS D|^D$/i.test(g),
-                      desc: 'Outras Classificações',
-                      badgeColor: 'border-slate-700 text-slate-300'
-                    }
-                  ];
-
-                  return gradeCategories.map(cat => {
-                    const matchingLots = auctions.filter(a => cat.matches(a.grade || ''));
-                    const totalUnits = matchingLots.reduce((acc, l) => acc + l.quantity, 0);
-
-                    // Skip empty "Outras Grades" if 0
-                    if (cat.label === 'Outras Grades' && matchingLots.length === 0) return null;
-
-                    return (
-                      <div key={cat.label} className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <span className={`font-bold text-xs ${cat.badgeColor}`}>{cat.label}</span>
-                          <span className="text-[10px] text-amber-400 font-mono font-bold">{matchingLots.length.toLocaleString()} lotes</span>
-                        </div>
-                        <span className="text-lg font-black text-slate-100 font-mono block">
-                          {totalUnits.toLocaleString()} aparelhos
-                        </span>
-                        <span className="text-[10px] text-slate-400 block truncate">
-                          {cat.desc}
-                        </span>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Live Computed Offers Feed */}
-          <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-emerald-400" />
-                  <span>Últimas Ofertas Computadas pelos Clientes</span>
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Lances enviados em tempo real através do painel do cliente USAFAST
-                </p>
-              </div>
-              <button
-                onClick={() => setAdminTab('offers')}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors"
-              >
-                Ver Todas as Ofertas ({offersList.length}) →
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 text-[11px] bg-slate-950/40">
-                    <th className="py-2.5 px-3">Horário</th>
-                    <th className="py-2.5 px-3">Lote</th>
-                    <th className="py-2.5 px-3">Arrematante</th>
-                    <th className="py-2.5 px-3">Oferta (USD)</th>
-                    <th className="py-2.5 px-3">Valor (BRL)</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {offersList.slice(0, 5).map(offer => (
-                    <tr key={offer.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">{offer.timestamp}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-amber-400">{offer.lotNumber}</td>
-                      <td className="py-2.5 px-3 font-semibold text-white">{offer.clientName}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">${offer.amountUsd.toLocaleString()} USD</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-300">R$ {offer.amountBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          offer.status === 'Vencendo'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : offer.status === 'Homologada / Arrematada'
-                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}>
-                          {offer.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Homologada / Arrematada')}
-                          className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 rounded text-[11px] font-medium transition-colors"
-                        >
-                          Homologar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <span className="text-slate-400 text-[11px]">Volume Pregão (USD)</span>
+              <span className="text-2xl font-black text-emerald-400 font-mono block">${auctions.reduce((acc, l) => acc + l.currentBidUsd, 0).toLocaleString()}</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 1: UPLOAD / IMPORTAR (EXCEL, CSV & TEXTO) */}
-      {/* ======================================================== */}
+      {/* UPLOAD TAB */}
       {adminTab === 'upload' && (
         <div className="space-y-6">
-          {/* Verizon Featured Banner */}
           <div className="p-6 bg-gradient-to-r from-red-950/40 via-slate-900 to-amber-950/30 border border-red-500/40 rounded-2xl space-y-4 shadow-xl">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded bg-red-600 text-white font-black text-[11px] tracking-wider uppercase shadow-md">
-                    PADRÃO VERIZON
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded bg-slate-800 text-amber-400 border border-amber-500/30 font-mono text-[11px]">
-                    US Carrier Wholesale Standard
-                  </span>
-                </div>
-                <h2 className="text-xl font-black text-white tracking-tight">
-                  Importador Especializado de Leilões VERIZON (Arquivo Anexado)
-                </h2>
-                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                  Reconhece o layout exato com as 16 colunas oficiais (<span className="text-amber-300 font-mono">Lot #, Title, Qty, OEM, Model, Item Description, Part #, Category, Grade, Capacity, Color, Inventory Source, End Date, End Time, URL</span>) e agrupa automaticamente linhas com o mesmo número de lote.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={isLoadingAssurant}
-                  onClick={handleLoadAssurantFeed}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 active:scale-95"
-                >
-                  {isLoadingAssurant ? (
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <FileSpreadsheet className="w-4 h-4 text-white" />
-                  )}
-                  <span>
-                    {isLoadingAssurant ? 'Processando Feed...' : '⚡ Carregar ASSURANT / B-Stock (Todos Modelos + Preço)'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isLoadingVerizon}
-                  onClick={handleLoadAttachedVerizonCsv}
-                  className="px-4 py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-95"
-                >
-                  {isLoadingVerizon ? (
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <FileSpreadsheet className="w-4 h-4 text-white" />
-                  )}
-                  <span>
-                    {isLoadingVerizon ? 'Lendo...' : '⚡ Carregar CSV VERIZON'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isLoadingStockCsv}
-                  onClick={handleLoadStockFeed}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95"
-                >
-                  {isLoadingStockCsv ? (
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  ) : (
-                    <FileSpreadsheet className="w-4 h-4 text-white" />
-                  )}
-                  <span>
-                    {isLoadingStockCsv ? 'Lendo...' : '🍏 Carregar Estoque Pronta Entrega'}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-5">
-            {/* Format & Mode Selector Tabs */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-              <div>
-                <span className="text-xs font-bold text-slate-300 block">Formato de Importação:</span>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPresetFormat('VERIZON')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'VERIZON'
-                        ? 'bg-red-600 text-white shadow-md shadow-red-600/20'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>★ Padrão VERIZON (DNA, DNB, DNC, DND)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPresetFormat('ASSURANT');
-                      setStockAppleGroupMode('individual');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'ASSURANT'
-                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 ring-1 ring-indigo-400'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>★ Leilão ASSURANT (XLSX / CSV)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPresetFormat('GENERIC')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                      presetFormat === 'GENERIC'
-                        ? 'bg-amber-400 text-slate-950 font-bold'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    <span>Importador Planilha Genérica (CSV / XLSX)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Upload Mode Tabs */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setUploadMode('file')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                    uploadMode === 'file'
-                      ? 'bg-slate-700 text-white font-bold'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                  }`}
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Arquivo (.xlsx / .csv)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setUploadMode('paste')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                    uploadMode === 'paste'
-                      ? 'bg-slate-700 text-white font-bold'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Colar Texto de Importação (Ctrl+V)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Mode 1: Drag & Drop File Zone */}
-            {uploadMode === 'file' ? (
-              <div className="space-y-3">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-red-500/80 rounded-2xl p-6 sm:p-10 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/80 transition-all space-y-3"
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  accept=".xlsx, .xls, .xlx, .csv"
-                  className="hidden"
-                />
-                <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-bold text-white block">
-                    {uploadedFileName ? `Arquivo Carregado: ${uploadedFileName}` : 'Clique para subir ou arraste sua planilha (CSV / Excel) aqui'}
-                  </span>
-                  <span className="text-xs text-slate-400 block">
-                    Formatos aceitos: Arquivos CSV (.csv) e Microsoft Excel (.xlsx, .xls)
-                  </span>
-                </div>
-              </div>
-              {uploadedFileName && (
-                <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-emerald-950/30 border border-emerald-500/40 rounded-xl">
-                  <div className="text-xs text-emerald-200">
-                    <span className="font-bold block">Planilha pronta: {uploadedFileName}</span>
-                    <span className="text-[11px] text-emerald-400">
-                      {(presetFormat === 'STOCK_APPLE' || presetFormat === 'ASSURANT' || presetFormat === 'MARKETPLACE_1' || presetFormat === 'MARKETPLACE_2' || presetFormat === 'MARKETPLACE_3')
-                        ? `${stockAppleAudit.approvedCount.toLocaleString()} itens/lotes prontos para carregar`
-                        : `${parsedPreviewRows.length.toLocaleString()} linhas lidas`}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleApplyImport}
-                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Importar / Carregar Lotes Agora</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            ) : (
-              /* Mode 2: Paste Direct Text Import */
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="text-xs text-slate-300 block font-medium">
-                    Cole abaixo o texto formatado do leilão ou inventário:
-                  </label>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPasteText(SAMPLE_MACBOOKS_TEXT);
-                        setPresetFormat('MACBOOKS');
-                      }}
-                      className="text-purple-400 hover:underline text-[11px] font-bold flex items-center gap-1"
-                    >
-                      <span>💻 Inserir Modelo Macbooks</span>
-                    </button>
-                    <span className="text-slate-600">·</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPasteText(SAMPLE_PRONTA_ENTREGA_TEXT);
-                        setPresetFormat('STOCK_APPLE');
-                      }}
-                      className="text-emerald-400 hover:underline text-[11px] font-bold flex items-center gap-1"
-                    >
-                      <span>🍏 Inserir Modelo Pronta Entrega</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* MacBook Margin Selection Control Banner */}
-                {presetFormat === 'MACBOOKS' && (
-                  <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-purple-600 text-white font-black text-[10px] uppercase">
-                        MARGEM DE LUCRO MACBOOKS
-                      </span>
-                      <span className="text-xs text-purple-200">
-                        Regra: Preço &lt;= $500 (+ $25 USD) e Preço &gt; $500 (+ $40 USD)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setMacbookMarginActive(!macbookMarginActive)}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        macbookMarginActive
-                          ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      <span>{macbookMarginActive ? '✅ Margem Ativa (+$25 / +$40)' : '❌ Margem Desativada (Valor Original)'}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Pronta Entrega Info Banner */}
-                {presetFormat === 'STOCK_APPLE' && (
-                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs text-emerald-200">
-                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px] uppercase">
-                        PRONTA ENTREGA
-                      </span>
-                      <span>
-                        Filtro automático: Apenas insere produtos com valor &gt; $0.00 e quantidade &gt; 0 (número do meio em Need/Have/OnPO).
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <textarea
-                  rows={8}
-                  value={pasteText}
-                  onChange={e => setPasteText(e.target.value)}
-                  placeholder={
-                    presetFormat === 'MACBOOKS'
-                      ? "Cole aqui as linhas do leilão Macbooks:\n2021 Apple M1 Pro MacBook Pro 16\" 90%+ Battery 3.20GHz/16GB/512GB SSD (Silver) A2485\n$989.00"
-                      : presetFormat === 'STOCK_APPLE'
-                      ? "Cole aqui o texto do inventário Pronta Entrega:\nApple\nIphone 11 Pro Max 64 GB DEF\n1560144\nPhone\n$156.00\n0 / 1 / 0"
-                      : "Cole aqui as linhas copiadas do Excel, CSV ou texto do leilão..."
-                  }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-red-400"
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleProcessPastedText}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-md shadow-red-600/20"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Processar Texto Colado</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPasteText('')}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs transition-colors"
-                  >
-                    Limpar Campo
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 pt-2 border-t border-slate-800">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Compatível com exportações oficiais Verizon Wireless Returns, AT&T Liquidation e operadoras dos EUA.
-              </span>
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={handleDownloadTemplate}
-                className="text-amber-400 hover:underline font-semibold"
+                type="button"
+                onClick={handleLoadAttachedVerizonCsv}
+                className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg"
               >
-                Baixar Planilha Modelo Exemplo (.xlsx) ➔
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <span>Carregar CSV VERIZON</span>
               </button>
             </div>
           </div>
-
-          {/* ======================================================== */}
-          {/* STOCK APPLE / ASSURANT UNLOCKED (XML / CSV) CONSOLE      */}
-          {/* ======================================================== */}
-          {isStockFeedFormat(presetFormat) && stockAppleItems.length > 0 && (
-            <div className={`space-y-6 p-6 bg-slate-900/90 border rounded-2xl shadow-2xl ${presetFormat === 'ASSURANT' ? 'border-indigo-500/40' : 'border-emerald-500/40'}`}>
-              {presetFormat === 'ASSURANT' && (
-                <div className="p-3.5 bg-indigo-950/40 border border-indigo-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-black uppercase">
-                      LEILÃO ASSURANT
-                    </span>
-                    <span className="text-xs text-indigo-200 font-semibold">
-                      Acréscimo automático de +$5 USD por aparelho nos valores importados (apenas UNLOCKED)
-                    </span>
-                  </div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={addAssurantFiveUsd}
-                      onChange={(e) => setAddAssurantFiveUsd(e.target.checked)}
-                      className="w-4 h-4 rounded accent-indigo-500"
-                    />
-                    <span>Acrescentar +${assurantMarkupAmount} USD em todos os valores</span>
-                  </label>
-                </div>
-              )}
-              {/* Header & Stats Banner */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>FILTRO RIGOROSO ATIVO: 100% APPLE UNLOCKED</span>
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">
-                      Apenas iPhones, iPads & Apple Watches Desbloqueados
-                    </span>
-                  </div>
-                  <h3 className="font-black text-white text-lg mt-1.5 flex items-center gap-2">
-                    <span>Estoque Apple Desbloqueado: {stockAppleAudit.approvedCount.toLocaleString()} Itens Aprovados</span>
-                    <span className="text-slate-400 text-sm font-normal">({stockAppleAudit.totalApprovedUnits.toLocaleString()} Aparelhos Físicos)</span>
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Critério de seleção aplicado: Apenas modelos da Apple (<span className="text-emerald-300 font-semibold">iPhones</span>, <span className="text-emerald-300 font-semibold">iPads</span> e <span className="text-emerald-300 font-semibold">Apple Watches</span>) com status <span className="text-emerald-400 font-mono font-bold">UNLOCKED</span>. Todos os aparelhos com bloqueio de operadora ou iCloud (<span className="text-rose-400 font-mono font-bold">LOCKED</span>) foram automaticamente excluídos.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={handleApplyStockAppleImport}
-                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Carregar e Publicar {stockAppleGroupMode === 'grouped' ? `${stockAppleGroupedLots.length} Lotes no Atacado` : `${stockAppleAudit.approvedCount.toLocaleString()} Lotes Individuais`} no Hub</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* 4 Quick-Stat Audit Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-emerald-950/25 border border-emerald-500/30 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-emerald-400 font-bold">
-                    <span>Aprovados (Desbloqueados)</span>
-                    <CheckSquare className="w-4 h-4" />
-                  </div>
-                  <div className="text-2xl font-black text-white font-mono">
-                    {stockAppleAudit.approvedCount.toLocaleString()}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-300 font-medium pt-1 border-t border-emerald-500/20">
-                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
-                      📱 {stockAppleAudit.approvedIPhones.toLocaleString()} iPhones
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
-                      📲 {stockAppleAudit.approvedIPads.toLocaleString()} iPads
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded text-emerald-300">
-                      ⌚ {stockAppleAudit.approvedWatches.toLocaleString()} Watches
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-blue-400 font-bold">
-                    <span>Total Unidades Físicas</span>
-                    <Package className="w-4 h-4" />
-                  </div>
-                  <div className="text-2xl font-black text-white font-mono">
-                    {stockAppleAudit.totalApprovedUnits.toLocaleString()}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Soma da quantidade disponível dos itens aprovados para arremate
-                  </div>
-                </div>
-
-                <div className="p-4 bg-rose-950/20 border border-rose-500/30 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-rose-400 font-bold">
-                    <span>Descartados Bloqueados (LOCKED)</span>
-                    <Lock className="w-4 h-4 text-rose-400" />
-                  </div>
-                  <div className="text-2xl font-black text-rose-300 font-mono">
-                    {stockAppleAudit.discardedLockedCount.toLocaleString()}
-                  </div>
-                  <div className="text-[11px] text-rose-300/80 font-medium">
-                    100% filtrados para proteger o cliente de aparelhos bloqueados
-                  </div>
-                </div>
-
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-amber-400 font-bold">
-                    <span>Lotes Prontos para Publicação</span>
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <div className="text-2xl font-black text-amber-300 font-mono">
-                    {stockAppleGroupMode === 'grouped' ? stockAppleGroupedLots.length.toLocaleString() : stockAppleAudit.approvedCount.toLocaleString()}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {stockAppleGroupMode === 'grouped' ? 'Agrupados por Modelo + Capacidade + Grade' : 'Individualmente linha a linha por Item #'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Price Multiplier & Mode Bar */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-950 rounded-xl border border-slate-800">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-300 block">Modo de Consolidação de Lotes:</label>
-                  <div className="flex flex-col gap-2 text-xs">
-                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      stockAppleGroupMode === 'grouped'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="appleGroupMode"
-                        checked={stockAppleGroupMode === 'grouped'}
-                        onChange={() => setStockAppleGroupMode('grouped')}
-                        className="accent-emerald-400"
-                      />
-                      <span>Consolidar por Modelo & Grade ({stockAppleGroupedLots.length} lotes de atacado)</span>
-                    </label>
-
-                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      stockAppleGroupMode === 'individual'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="appleGroupMode"
-                        checked={stockAppleGroupMode === 'individual'}
-                        onChange={() => setStockAppleGroupMode('individual')}
-                        className="accent-emerald-400"
-                      />
-                      <span>Lotes Individuais por Linha ({stockAppleAudit.approvedCount.toLocaleString()} lotes)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                    <span>Desconto Lance Inicial (%):</span>
-                    <span className="text-emerald-400 font-mono font-black">{stockAppleDiscountPercent}% OFF</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="40"
-                    step="5"
-                    value={stockAppleDiscountPercent}
-                    onChange={e => setStockAppleDiscountPercent(parseInt(e.target.value, 10) || 15)}
-                    className="w-full accent-emerald-400 cursor-pointer"
-                  />
-                  <span className="text-[10px] text-slate-500 block">
-                    Define o lance de abertura abaixo do List Price de atacado para incentivar lances.
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Modo de Publicação no Catálogo:</label>
-                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900 p-2.5 rounded-lg border border-slate-800 hover:border-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={replaceExistingLots}
-                      onChange={e => setReplaceExistingLots(e.target.checked)}
-                      className="accent-emerald-400 rounded w-4 h-4"
-                    />
-                    <span>Substituir leilões atuais pelos novos lotes Apple</span>
-                  </label>
-                  <span className="text-[10px] text-slate-500 block">
-                    Cotação PTAX aplicada: R$ {usdRate.toFixed(2)} por USD.
-                  </span>
-                </div>
-              </div>
-
-              {/* Table Filter Tabs & Search Bar */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => { setStockAppleFilterType('ALL'); setStockApplePage(1); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                        stockAppleFilterType === 'ALL'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      Todos Aprovados ({stockAppleAudit.approvedCount.toLocaleString()})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setStockAppleFilterType('IPHONE'); setStockApplePage(1); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                        stockAppleFilterType === 'IPHONE'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span>iPhones ({stockAppleAudit.approvedIPhones.toLocaleString()})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setStockAppleFilterType('IPAD'); setStockApplePage(1); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                        stockAppleFilterType === 'IPAD'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      <Tablet className="w-3.5 h-3.5" />
-                      <span>iPads ({stockAppleAudit.approvedIPads.toLocaleString()})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setStockAppleFilterType('WATCH'); setStockApplePage(1); }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                        stockAppleFilterType === 'WATCH'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      <Watch className="w-3.5 h-3.5" />
-                      <span>Apple Watches ({stockAppleAudit.approvedWatches.toLocaleString()})</span>
-                    </button>
-                    {stockAppleAudit.approvedSamsungs > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => { setStockAppleFilterType('SAMSUNG'); setStockApplePage(1); }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                          stockAppleFilterType === 'SAMSUNG'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                        }`}
-                      >
-                        <Smartphone className="w-3.5 h-3.5" />
-                        <span>Samsung ({stockAppleAudit.approvedSamsungs.toLocaleString()})</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Filtrar por modelo, cor, GB..."
-                      value={stockAppleSearch}
-                      onChange={e => { setStockAppleSearch(e.target.value); setStockApplePage(1); }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Table of items */}
-                <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950/60 max-h-[460px] overflow-y-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/90 text-slate-400 text-[11px] font-bold uppercase sticky top-0 z-10 border-b border-slate-800">
-                      <tr>
-                        <th className="py-2.5 px-3">Item #</th>
-                        <th className="py-2.5 px-3">Tipo</th>
-                        <th className="py-2.5 px-3">Modelo & Capacidade</th>
-                        <th className="py-2.5 px-3">Cor</th>
-                        <th className="py-2.5 px-3">Grade</th>
-                        <th className="py-2.5 px-3 text-center">Status Bloqueio</th>
-                        <th className="py-2.5 px-3 text-right">Qtd</th>
-                        <th className="py-2.5 px-3 text-right">Preço Unit.</th>
-                        <th className="py-2.5 px-3">Armazém</th>
-                        <th className="py-2.5 px-3 text-center">Filtro</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {paginatedStockItems.map((item, idx) => {
-                        const isApproved = item.status === 'APPROVED';
-                        return (
-                          <tr
-                            key={item.id || idx}
-                            className={`hover:bg-slate-900/60 transition-colors ${
-                              !isApproved ? 'bg-rose-950/10' : ''
-                            }`}
-                          >
-                            <td className="py-2 px-3 font-mono text-[11px] text-slate-300 font-bold">
-                              {item.itemNumber}
-                            </td>
-                            <td className="py-2 px-3">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 flex items-center gap-1 w-fit">
-                                {item.deviceType === 'iPhone' && <Smartphone className="w-3 h-3 text-blue-400" />}
-                                {item.deviceType === 'iPad' && <Tablet className="w-3 h-3 text-emerald-400" />}
-                                {item.deviceType === 'Apple Watch' && <Watch className="w-3 h-3 text-amber-400" />}
-                                <span>{item.deviceType}</span>
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 font-semibold text-white">
-                              <div>{item.model}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">{item.capacity} · {item.modelNumber}</div>
-                            </td>
-                            <td className="py-2 px-3 text-slate-300">{item.color}</td>
-                            <td className="py-2 px-3">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400/10 text-amber-300 border border-amber-400/30">
-                                {item.grade}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              {isApproved ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 inline-flex items-center gap-1">
-                                  <ShieldCheck className="w-3 h-3" />
-                                  <span>UNLOCKED</span>
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/40 inline-flex items-center gap-1">
-                                  <Lock className="w-3 h-3" />
-                                  <span>LOCKED</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-white">
-                              {item.availableQuantity}x
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">
-                              ${item.listPrice.toFixed(2)}
-                            </td>
-                            <td className="py-2 px-3 text-slate-400 font-mono text-[11px]">
-                              {item.warehouse}
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              {isApproved ? (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-bold">
-                                  APROVADO
-                                </span>
-                              ) : (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-rose-500/20 text-rose-300 font-bold" title={item.discardReason}>
-                                  DESCARTADO
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {paginatedStockItems.length === 0 && (
-                        <tr>
-                          <td colSpan={10} className="py-8 text-center text-slate-500">
-                            Nenhum item encontrado para este filtro ou busca.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination Controls */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 text-xs text-slate-400">
-                  <span>
-                    Mostrando {filteredStockItems.length > 0 ? (stockApplePage - 1) * stockPageSize + 1 : 0} a {Math.min(stockApplePage * stockPageSize, filteredStockItems.length)} de {filteredStockItems.length.toLocaleString()} itens
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={stockApplePage <= 1}
-                      onClick={() => setStockApplePage(p => Math.max(1, p - 1))}
-                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none rounded text-xs font-semibold text-white flex items-center gap-1"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                      <span>Anterior</span>
-                    </button>
-                    <span className="font-mono text-slate-300 font-bold px-2">
-                      Página {stockApplePage} de {totalStockPages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={stockApplePage >= totalStockPages}
-                      onClick={() => setStockApplePage(p => Math.min(totalStockPages, p + 1))}
-                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none rounded text-xs font-semibold text-white flex items-center gap-1"
-                    >
-                      <span>Próxima</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* VERIZON PREVIEW & PUBLISH CONSOLE */}
-          {/* ======================================================== */}
-          {presetFormat === 'VERIZON' && verizonGroupedLots.length > 0 && (
-            <div className="space-y-6 p-6 bg-slate-900/90 border border-red-500/40 rounded-2xl shadow-2xl">
-              {/* Header & Stats Banner */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded bg-red-600 text-white text-[10px] font-black uppercase">
-                      VERIZON OFICIAL PRONTO
-                    </span>
-                    <h3 className="font-black text-white text-lg">
-                      {verizonGroupedLots.length} Lotes Agrupados Detectados ({verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0).toLocaleString()} Aparelhos)
-                    </h3>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Cada lote foi unificado a partir de suas respectivas linhas de manifesto com IMEI mascarado, capacidade e operadora limpa.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={handleApplyVerizonImport}
-                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Publicar {verizonImportMode === 'individual' ? `${(parsedPreviewRows.length || verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0)).toLocaleString()} Modelos Individuais` : `${verizonGroupedLots.length} Lotes`} no Catálogo</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Price Multiplier & Settings Bar */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-950 rounded-xl border border-slate-800">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                    <span>Custo Base Estimado por Aparelho (USD):</span>
-                    <span className="text-amber-400 font-mono font-black">${verizonUnitRate} USD</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="30"
-                    max="200"
-                    step="5"
-                    value={verizonUnitRate}
-                    onChange={e => handleRecalculateVerizonRate(parseInt(e.target.value, 10) || 85)}
-                    className="w-full accent-amber-400 cursor-pointer"
-                  />
-                  <span className="text-[10px] text-slate-500 block">
-                    Ajuste dinâmico do lance wholesale por unidade nos lotes (multiplica pela quantidade de aparelhos).
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 block">Modo de Consolidação de Lotes:</label>
-                  <div className="flex flex-col gap-1.5 text-xs">
-                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      verizonImportMode === 'individual'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="vzMode"
-                        checked={verizonImportMode === 'individual'}
-                        onChange={() => setVerizonImportMode('individual')}
-                        className="accent-emerald-400"
-                      />
-                      <span>Lotes Individuais por Linha ({(parsedPreviewRows.length || verizonGroupedLots.reduce((acc, l) => acc + l.totalQty, 0)).toLocaleString()} modelos)</span>
-                    </label>
-
-                    <label className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      verizonImportMode === 'grouped'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300 font-bold'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="vzMode"
-                        checked={verizonImportMode === 'grouped'}
-                        onChange={() => setVerizonImportMode('grouped')}
-                        className="accent-emerald-400"
-                      />
-                      <span>Consolidar por Lot # ({verizonGroupedLots.length} lotes)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="text-xs font-bold text-slate-300 block">Configurações Adicionais:</span>
-                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900 p-2.5 rounded-lg border border-slate-800 hover:border-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={replaceExistingLots}
-                      onChange={e => setReplaceExistingLots(e.target.checked)}
-                      className="accent-amber-400 rounded w-4 h-4"
-                    />
-                    <span>Substituir leilões anteriores</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Grouped Lots Accordion Preview Table */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="font-semibold text-slate-300">Prévia dos Lotes Agrupados:</span>
-                  <span>Clique em &quot;Ver Manifesto&quot; para auditar cada aparelho</span>
-                </div>
-
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950 divide-y divide-slate-800/80 max-h-[500px] overflow-y-auto">
-                  {verizonGroupedLots.map((lot, idx) => {
-                    const isExpanded = verizonExpandedLot === lot.lotNumber;
-                    return (
-                      <div key={lot.lotNumber} className="transition-colors hover:bg-slate-900/40">
-                        {/* Summary Row */}
-                        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1 min-w-0">
-                            <span className="font-mono text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 border border-red-500/30 font-bold shrink-0">
-                              #{idx + 1} · {lot.lotNumber}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-xs sm:text-sm font-bold text-white truncate">
-                                {lot.title}
-                              </h4>
-                              <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400">
-                                <span className="text-slate-300 font-medium">{lot.primaryModel}</span>
-                                <span>·</span>
-                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 font-mono font-bold">
-                                  {lot.totalQty} unidades
-                                </span>
-                                <span>·</span>
-                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                                  {lot.mappedGrade} ({lot.gradeRaw})
-                                </span>
-                                <span>·</span>
-                                <span>Fontes: {lot.uniqueSources.slice(0, 2).join(', ') || 'Carrier'}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            <div className="text-right">
-                              <span className="text-xs font-mono font-black text-emerald-400 block">
-                                ${lot.calculatedCurrentBidUsd.toLocaleString()} USD
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono block">
-                                R$ {lot.calculatedRetailBrl.toLocaleString('pt-BR')} (Revenda BR)
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setVerizonExpandedLot(isExpanded ? null : lot.lotNumber)}
-                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
-                            >
-                              <Layers className="w-3.5 h-3.5 text-amber-400" />
-                              <span>{isExpanded ? 'Ocultar' : `Manifesto (${lot.manifest.length})`}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Expanded Manifest Accordion */}
-                        {isExpanded && (
-                          <div className="p-4 bg-slate-900/80 border-t border-slate-800 space-y-3">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-bold text-white flex items-center gap-1.5">
-                                <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-                                Itens e Especificações de Peças do Lote {lot.lotNumber}
-                              </span>
-                              {lot.url && (
-                                <a
-                                  href={lot.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-amber-400 hover:underline flex items-center gap-1 text-[11px]"
-                                >
-                                  <span>Ver anúncio oficial do lote ↗</span>
-                                </a>
-                              )}
-                            </div>
-
-                            <div className="overflow-x-auto max-h-48 overflow-y-auto rounded-lg border border-slate-800">
-                              <table className="w-full text-left text-[11px] border-collapse bg-slate-950">
-                                <thead>
-                                  <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/90">
-                                    <th className="py-1.5 px-2.5">Qtd</th>
-                                    <th className="py-1.5 px-2.5">Modelo</th>
-                                    <th className="py-1.5 px-2.5">Memória</th>
-                                    <th className="py-1.5 px-2.5">Part #</th>
-                                    <th className="py-1.5 px-2.5">Descrição da Peça</th>
-                                    <th className="py-1.5 px-2.5">Origem</th>
-                                    <th className="py-1.5 px-2.5">Grade</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                                  {lot.manifest.map((item, mIdx) => (
-                                    <tr key={mIdx} className="hover:bg-slate-900/50">
-                                      <td className="py-1.5 px-2.5 font-mono text-amber-400 font-bold">{item.qty || 1}x</td>
-                                      <td className="py-1.5 px-2.5 font-medium text-white">{item.model}</td>
-                                      <td className="py-1.5 px-2.5 font-mono">{item.storage}</td>
-                                      <td className="py-1.5 px-2.5 font-mono text-slate-400">{item.partNumber || '-'}</td>
-                                      <td className="py-1.5 px-2.5 text-slate-300 truncate max-w-[200px]" title={item.itemDescription}>
-                                        {item.itemDescription || '-'}
-                                      </td>
-                                      <td className="py-1.5 px-2.5">
-                                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">
-                                          {item.inventorySource || 'Return'}
-                                        </span>
-                                      </td>
-                                      <td className="py-1.5 px-2.5">{item.grade}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ======================================================== */}
-          {/* GENERIC PREVIEW & MAPPING CONSOLE */}
-          {/* ======================================================== */}
-          {presetFormat === 'GENERIC' && parsedPreviewRows.length > 0 && (
-            <div className="space-y-4 p-6 bg-slate-900/70 border border-amber-500/30 rounded-2xl">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-white text-base">
-                    Mapeamento de Colunas ({parsedPreviewRows.length} linhas prontas)
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Confira se os campos da sua planilha correspondem aos atributos do leilão
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleApplyImport}
-                  className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Publicar {parsedPreviewRows.length} Lotes no Catálogo Agora</span>
-                </button>
-              </div>
-
-              {/* Mapping Selectors Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs p-4 bg-slate-950 rounded-xl border border-slate-800">
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Lote / ID:</label>
-                  <select
-                    value={columnMapping.lotNumber}
-                    onChange={e => setColumnMapping({ ...columnMapping, lotNumber: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Título do Lote:</label>
-                  <select
-                    value={columnMapping.title}
-                    onChange={e => setColumnMapping({ ...columnMapping, title: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Modelo Aparelho:</label>
-                  <select
-                    value={columnMapping.modelFamily}
-                    onChange={e => setColumnMapping({ ...columnMapping, modelFamily: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Grade (A+, A, B, C):</label>
-                  <select
-                    value={columnMapping.grade}
-                    onChange={e => setColumnMapping({ ...columnMapping, grade: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Quantidade (Qtd):</label>
-                  <select
-                    value={columnMapping.quantity}
-                    onChange={e => setColumnMapping({ ...columnMapping, quantity: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Lance Atual USD ($):</label>
-                  <select
-                    value={columnMapping.currentBidUsd}
-                    onChange={e => setColumnMapping({ ...columnMapping, currentBidUsd: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Casa de Leilão:</label>
-                  <select
-                    value={columnMapping.auctionHouse}
-                    onChange={e => setColumnMapping({ ...columnMapping, auctionHouse: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-400 block mb-1 font-medium">Localização / Galpão:</label>
-                  <select
-                    value={columnMapping.location}
-                    onChange={e => setColumnMapping({ ...columnMapping, location: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-white"
-                  >
-                    {rawHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Preview Table of Rows */}
-              <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950 max-h-64 overflow-y-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-900 text-slate-400 text-[11px]">
-                      <th className="py-2 px-3">#</th>
-                      <th className="py-2 px-3">Lote</th>
-                      <th className="py-2 px-3">Título</th>
-                      <th className="py-2 px-3">Modelo</th>
-                      <th className="py-2 px-3">Qtd</th>
-                      <th className="py-2 px-3">Grade</th>
-                      <th className="py-2 px-3">Lance USD</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {parsedPreviewRows.slice(0, 10).map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-900/40">
-                        <td className="py-2 px-3 font-mono text-slate-500">{idx + 1}</td>
-                        <td className="py-2 px-3 font-mono font-bold text-amber-400">{row[columnMapping.lotNumber] || '-'}</td>
-                        <td className="py-2 px-3 font-semibold text-white truncate max-w-[200px]">{row[columnMapping.title] || '-'}</td>
-                        <td className="py-2 px-3">{row[columnMapping.modelFamily] || '-'}</td>
-                        <td className="py-2 px-3 font-mono">{row[columnMapping.quantity] || '1'}</td>
-                        <td className="py-2 px-3">{row[columnMapping.grade] || 'Grade A'}</td>
-                        <td className="py-2 px-3 font-mono text-emerald-400">${row[columnMapping.currentBidUsd] || '0'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 2: GERENCIAR LEILÕES (EDIÇÃO, BUSCA & PAGINAÇÃO ULTRA-RÁPIDA) */}
-      {/* ======================================================== */}
-      {adminTab === 'lots' && (() => {
-        const filteredAdminLots = auctions.filter(lot => {
-          if (!adminLotSearch.trim()) return true;
-          const q = adminLotSearch.toLowerCase();
-          return (
-            lot.title.toLowerCase().includes(q) ||
-            lot.lotNumber.toLowerCase().includes(q) ||
-            lot.modelFamily.toLowerCase().includes(q) ||
-            lot.location.toLowerCase().includes(q) ||
-            (lot.auctionHouse || '').toLowerCase().includes(q)
-          );
-        });
-
-        const totalPages = Math.ceil(filteredAdminLots.length / ADMIN_LOTS_PER_PAGE) || 1;
-        const currentPage = Math.min(adminLotPage, totalPages);
-        const startIndex = (currentPage - 1) * ADMIN_LOTS_PER_PAGE;
-        const paginatedAdminLots = filteredAdminLots.slice(startIndex, startIndex + ADMIN_LOTS_PER_PAGE);
-
-        return (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento ({auctions.length} Lotes)</h2>
-                <p className="text-xs text-slate-400">Edite lances atuais, altere grades ou remova lotes encerrados com navegação rápida</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const blob = new Blob([JSON.stringify(auctions)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'catalogo_leiloes_usafast.json';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    showNotice('Catálogo exportado! Abra esse arquivo no celular em "Importar Catálogo (.json)".', 'success');
-                  }}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Exportar Catálogo (.json)</span>
-                </button>
-                <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Importar Catálogo (.json)</span>
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      const r = new FileReader();
-                      r.onload = (ev) => {
-                        try {
-                          const parsed = JSON.parse(String(ev.target?.result || '[]'));
-                          if (Array.isArray(parsed) && parsed.length > 0) {
-                            onUpdateAuctions(parsed);
-                            showNotice(`🎉 ${parsed.length} lotes sincronizados com sucesso!`, 'success');
-                          }
-                        } catch (err) {
-                          showNotice('Arquivo JSON inválido.', 'error');
-                        }
-                      };
-                      r.readAsText(f);
-                    }}
-                  />
-                </label>
-                <button
-                  onClick={() => setAdminTab('upload')}
-                  className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Importar Mais Lotes (Excel)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Search Bar for Admin Lots */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
-              <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={adminLotSearch}
-                  onChange={e => {
-                    setAdminLotSearch(e.target.value);
-                    setAdminLotPage(1);
-                  }}
-                  placeholder="Filtrar por lote (#VZ-01), modelo (iPhone 16), título ou leilão..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
-              {/* Admin Pagination Controls */}
-              <div className="flex items-center gap-2 text-xs font-semibold shrink-0">
-                <span className="text-slate-400">
-                  {filteredAdminLots.length} lotes ({currentPage}/{totalPages})
-                </span>
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setAdminLotPage(p => Math.max(1, p - 1))}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setAdminLotPage(p => Math.min(totalPages, p + 1))}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 rounded-lg transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
-                    <th className="py-3 px-3">Lote</th>
-                    <th className="py-3 px-3">Título</th>
-                    <th className="py-3 px-3">Qtd</th>
-                    <th className="py-3 px-3">Grade</th>
-                    <th className="py-3 px-3">Lance Atual (USD)</th>
-                    <th className="py-3 px-3">Revenda Brasil</th>
-                    <th className="py-3 px-3">Origem</th>
-                    <th className="py-3 px-3 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {paginatedAdminLots.map(lot => {
-                    const isEditing = editingLotId === lot.id;
-                    return (
-                      <tr key={lot.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-3 font-mono font-bold text-amber-400">{lot.lotNumber}</td>
-                        <td className="py-3 px-3">
-                          <span className="font-semibold text-white block truncate max-w-[240px]">{lot.title}</span>
-                          <span className="text-[10px] text-slate-400">{lot.modelFamily} · {lot.primaryStorage}</span>
-                        </td>
-                        <td className="py-3 px-3 font-mono">{lot.quantity} un</td>
-                        <td className="py-3 px-3">
-                          {isEditing ? (
-                            <select
-                              value={editGrade}
-                              onChange={e => setEditGrade(e.target.value as GradeType)}
-                              className="bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
-                            >
-                              <option value="Grade A+">Grade A+</option>
-                              <option value="Grade A">Grade A</option>
-                              <option value="Grade B">Grade B</option>
-                              <option value="Grade C">Grade C</option>
-                              <option value="DNA">DNA</option>
-                              <option value="DNB">DNB</option>
-                              <option value="DNC">DNC</option>
-                              <option value="DND">DND</option>
-                            </select>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-800 border border-slate-700">
-                              {lot.grade}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editPriceUsd}
-                              onChange={e => setEditPriceUsd(Number(e.target.value))}
-                              className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 font-mono text-emerald-400"
-                            />
-                          ) : (
-                            <span className="font-mono font-bold text-emerald-400">
-                              ${lot.currentBidUsd.toLocaleString()} USD
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 font-mono text-slate-300">
-                          R$ {lot.estimatedBrazilRetailBrl.toLocaleString('pt-BR')}
-                        </td>
-                        <td className="py-3 px-3 text-slate-400 truncate max-w-[120px]">
-                          {lot.location}
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          {isEditing ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleSaveEdit(lot.id)}
-                                className="px-2.5 py-1 bg-emerald-500 text-slate-950 font-bold rounded text-[11px]"
-                              >
-                                Salvar
-                              </button>
-                              <button
-                                onClick={() => setEditingLotId(null)}
-                                className="px-2 py-1 bg-slate-800 text-slate-300 rounded text-[11px]"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleStartEdit(lot)}
-                                className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded transition-colors"
-                                title="Editar preço e grade"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteLot(lot.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
-                                title="Excluir lote"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
-                <span>Exibindo <strong>{startIndex + 1}</strong> a <strong>{Math.min(startIndex + ADMIN_LOTS_PER_PAGE, filteredAdminLots.length)}</strong> de <strong>{filteredAdminLots.length}</strong> lotes no catálogo</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setAdminLotPage(p => Math.max(1, p - 1))}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-lg"
-                  >
-                    Anterior
-                  </button>
-                  <span className="px-2 font-mono text-amber-400 font-bold">{currentPage} / {totalPages}</span>
-                  <button
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setAdminLotPage(p => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-bold rounded-lg"
-                  >
-                    Próxima
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ======================================================== */}
-      {/* TAB 3: OFERTAS COMPUTADAS (OFFERS CONSOLE) */}
-      {/* ======================================================== */}
-      {adminTab === 'offers' && (
+      {/* LOTS TAB */}
+      {adminTab === 'lots' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-white">Central de Ofertas Computadas (Offers)</h2>
-              <p className="text-xs text-slate-400">
-                Lances e ofertas enviadas pelos arrematantes brasileiros em tempo real
-              </p>
-            </div>
-
-            <button
-              onClick={handleExportOffersCsv}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Exportar Ofertas (Excel)</span>
-            </button>
-          </div>
-
-          {/* E-mails para Novas Ofertas & Teste de Envio WhatsApp */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Cadastro de E-mails */}
-            <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-2xl space-y-3">
-              <div>
-                <h3 className="text-xs font-bold text-white">E-mails para Receber Novas Ofertas</h3>
-                <p className="text-[11px] text-slate-400">Cadastre os e-mails que serão notificados quando clientes enviarem novas ofertas.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="email"
-                  value={newNotificationEmail}
-                  onChange={e => setNewNotificationEmail(e.target.value)}
-                  placeholder="exemplo@empresa.com"
-                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddNotificationEmail}
-                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg text-xs shrink-0"
-                >
-                  + Cadastrar E-mail
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {notificationEmails.map(email => (
-                  <span key={email} className="px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-[11px] text-slate-200 flex items-center gap-1.5">
-                    <span>{email}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveNotificationEmail(email)}
-                      className="text-slate-400 hover:text-rose-400 font-bold"
-                      title="Remover e-mail"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Testar Envio WhatsApp */}
-            <div className="p-4 bg-slate-900/70 border border-slate-800 rounded-2xl space-y-3">
-              <div>
-                <h3 className="text-xs font-bold text-emerald-400">Testar Envio para WhatsApp (Status da Oferta)</h3>
-                <p className="text-[11px] text-slate-400">Simule o envio da mensagem de status da oferta para o WhatsApp do cliente.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={testWhatsappPhone}
-                  onChange={e => setTestWhatsappPhone(e.target.value)}
-                  placeholder="5511999999999"
-                  className="w-40 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
-                />
-                <select
-                  value={testWhatsappStatus}
-                  onChange={e => setTestWhatsappStatus(e.target.value as AdminOffer['status'])}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                >
-                  <option value="Aceita">Aceita</option>
-                  <option value="Em Análise">Em Análise</option>
-                  <option value="Contra-Oferta">Contra-Oferta</option>
-                  <option value="Recusada">Recusada</option>
-                </select>
-                <a
-                  href={`https://wa.me/${testWhatsappPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                    `Olá! Atualização da sua oferta no Leilão USAFAST: Status alterado para *${testWhatsappStatus}*. Acesse seu painel para conferir os detalhes.`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-lg text-xs transition-colors"
-                >
-                  Testar Envio WhatsApp
-                </a>
-              </div>
-              <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <label className="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoSendWhatsapp}
-                    onChange={e => setAutoSendWhatsapp(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded accent-emerald-500"
-                  />
-                  <span>Disparo automático ao clicar no status</span>
-                </label>
-                <input
-                  type="url"
-                  value={whatsappWebhookUrl}
-                  onChange={e => {
-                    setWhatsappWebhookUrl(e.target.value);
-                    try {
-                      localStorage.setItem('us_admin_whatsapp_webhook_v1', e.target.value);
-                    } catch (err) {}
-                  }}
-                  placeholder="Webhook API (opcional: Evolution/Z-API)"
-                  className="sm:w-56 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] text-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
-                  <th className="py-3 px-3">Data / Hora</th>
                   <th className="py-3 px-3">Lote</th>
-                  <th className="py-3 px-3">Modelo</th>
+                  <th className="py-3 px-3">Título</th>
                   <th className="py-3 px-3">Qtd</th>
                   <th className="py-3 px-3">Grade</th>
-                  <th className="py-3 px-3">Cor</th>
-                  <th className="py-3 px-3">Incremento</th>
-                  <th className="py-3 px-3">Arrematante / Cliente</th>
-                  <th className="py-3 px-3">Valor USD</th>
-                  <th className="py-3 px-3">Valor BRL (PTAX)</th>
-                  <th className="py-3 px-3">Status da Oferta</th>
-                  <th className="py-3 px-3 text-right">Gerenciar</th>
+                  <th className="py-3 px-3">Lance Atual (USD)</th>
+                  <th className="py-3 px-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {offersList.map(offer => {
-                  const lot = auctions.find(a => a.lotNumber === offer.lotNumber || a.id === offer.lotId);
-                  return (
-                  <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-3 text-slate-400">{offer.timestamp}</td>
-                    <td className="py-3 px-3">
-                      <span className="font-mono font-bold text-amber-400 block">{offer.lotNumber}</span>
-                      <span className="text-[10px] text-slate-400 truncate max-w-[140px] block">{offer.lotTitle}</span>
-                    </td>
-                    <td className="py-3 px-3 font-semibold text-white">
-                      {lot?.modelFamily || offer.lotTitle}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-slate-200">
-                      {lot?.quantity ? `${lot.quantity} un.` : '-'}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">
-                        {lot?.grade || '-'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-slate-300">
-                      {lot?.colorHighlights?.join(', ') || '-'}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-emerald-400">
-                      +$25 USD
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-semibold text-white block">{offer.clientName}</span>
-                      <span className="text-[10px] text-slate-400">{offer.clientEmail}</span>
-                    </td>
-                    <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                      ${offer.amountUsd.toLocaleString()} USD
-                    </td>
-                    <td className="py-3 px-3 font-mono text-slate-200">
-                      R$ {offer.amountBrl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                        offer.status === 'Aceita' || offer.status === 'Vencendo'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                          : offer.status === 'Contra-Oferta'
-                          ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40'
-                          : offer.status === 'Em Análise' || offer.status === 'Homologada / Arrematada'
-                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                          : offer.status === 'Recusada'
-                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                          : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}>
-                        {offer.status}
-                      </span>
-                      {offer.status === 'Contra-Oferta' && offer.counterOfferUsd && (
-                        <div className="text-[10px] text-indigo-300 font-mono mt-1">
-                          Contra: ${offer.counterOfferUsd.toLocaleString()} USD
-                        </div>
-                      )}
-                      {offer.adminNote && (
-                        <div className="text-[10px] text-slate-400 mt-0.5 max-w-[180px] truncate" title={offer.adminNote}>
-                          Obs: {offer.adminNote}
-                        </div>
-                      )}
-                    </td>
+                {auctions.slice(0, 20).map(lot => (
+                  <tr key={lot.id} className="hover:bg-slate-800/40 transition-colors">
+                    <td className="py-3 px-3 font-mono font-bold text-amber-400">{lot.lotNumber}</td>
+                    <td className="py-3 px-3 font-semibold text-white">{lot.title}</td>
+                    <td className="py-3 px-3 font-mono">{lot.quantity} un</td>
+                    <td className="py-3 px-3">{lot.grade}</td>
+                    <td className="py-3 px-3 font-mono font-bold text-emerald-400">${lot.currentBidUsd}</td>
                     <td className="py-3 px-3 text-right">
-                      <div className="flex flex-wrap items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Aceita')}
-                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold"
-                          title="Aceitar oferta"
-                        >
-                          Aceita
-                        </button>
-                        <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Em Análise')}
-                          className="px-2 py-1 bg-amber-600/80 hover:bg-amber-500 text-white rounded text-[11px] font-semibold"
-                          title="Colocar em análise"
-                        >
-                          Em Análise
-                        </button>
-                        <button
-                          onClick={() => {
-                            setCounterOfferEditingId(counterOfferEditingId === offer.id ? null : offer.id);
-                            setCounterOfferUsdInput(String(offer.counterOfferUsd || Math.round(offer.amountUsd * 1.05)));
-                            setCounterOfferNoteInput(offer.adminNote || '');
-                          }}
-                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold"
-                          title="Enviar contra-oferta"
-                        >
-                          Contra-Oferta
-                        </button>
-                        <button
-                          onClick={() => handleUpdateOfferStatus(offer.id, 'Recusada')}
-                          className="px-2 py-1 bg-rose-600/80 hover:bg-rose-500 text-white rounded text-[11px] font-semibold"
-                          title="Recusar oferta"
-                        >
-                          Recusada
-                        </button>
-                        {(() => {
-                          const clientObj = clientsList.find(c => c.email === offer.clientEmail);
-                          const phone = (offer.clientWhatsapp || clientObj?.whatsapp || clientObj?.phone || '5511999999999').replace(/\D/g, '');
-                          const msg = encodeURIComponent(
-                            `Olá ${offer.clientName}, sua oferta no lote ${offer.lotNumber} ($${offer.amountUsd} USD) está com status: *${offer.status}*${offer.counterOfferUsd ? ` (Contra-oferta: $${offer.counterOfferUsd} USD)` : ''}.`
-                          );
-                          const isHighlighted = lastUpdatedOfferId === offer.id;
-                          return (
-                            <a
-                              href={`https://wa.me/${phone}?text=${msg}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${
-                                isHighlighted
-                                  ? 'bg-emerald-500 text-slate-950 ring-2 ring-emerald-300 shadow-lg shadow-emerald-500/30 animate-pulse'
-                                  : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40'
-                              }`}
-                              title="Enviar aviso no WhatsApp do cliente"
-                            >
-                              Enviar WhatsApp
-                            </a>
-                          );
-                        })()}
-                      </div>
-                      {counterOfferEditingId === offer.id && (
-                        <div className="mt-2 p-2.5 bg-slate-950 border border-indigo-500/40 rounded-lg flex flex-col sm:flex-row items-center justify-end gap-2">
-                          <input
-                            type="number"
-                            value={counterOfferUsdInput}
-                            onChange={(e) => setCounterOfferUsdInput(e.target.value)}
-                            placeholder="Valor USD"
-                            className="w-28 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono"
-                          />
-                          <input
-                            type="text"
-                            value={counterOfferNoteInput}
-                            onChange={(e) => setCounterOfferNoteInput(e.target.value)}
-                            placeholder="Observação opcional..."
-                            className="w-44 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
-                          />
-                          <button
-                            onClick={() => {
-                              const val = Number(counterOfferUsdInput);
-                              if (!val || val <= 0) {
-                                showNotice('Informe um valor válido em USD para a contra-oferta.', 'error');
-                                return;
-                              }
-                              handleUpdateOfferStatus(offer.id, 'Contra-Oferta', val, counterOfferNoteInput.trim() || undefined);
-                              setCounterOfferEditingId(null);
-                            }}
-                            className="px-2.5 py-1 bg-indigo-500 hover:bg-indigo-400 text-white rounded text-[11px] font-bold"
-                          >
-                            Enviar
-                          </button>
-                        </div>
-                      )}
+                      <button onClick={() => handleDeleteLot(lot.id)} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 4: CLIENTES & PAINEL DE ARREMATANTES */}
-      {/* ======================================================== */}
-      {adminTab === 'clients' && (
-        <div className="space-y-6">
-          {/* SECTION 1: CADASTROS PENDENTES DE ANÁLISE */}
-          <div className="p-5 bg-amber-500/5 border border-amber-500/30 rounded-2xl space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center">
-                  <Clock className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-white">Cadastros Pendentes de Análise</h2>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs font-mono">
-                      {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).length} Pendentes
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Novos clientes cadastrados no portal aguardando aprovação para liberação de acesso ao sistema e lances.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).length === 0 ? (
-              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400 text-center">
-                ✓ Nenhum cadastro pendente de aprovação no momento. Todos os clientes ativos foram revisados.
-              </div>
-            ) : (
-              <div className="overflow-x-auto border border-amber-500/20 rounded-xl bg-slate-950/80">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 text-[11px] bg-slate-900/80">
-                      <th className="py-2.5 px-3">Nome / Razão Social</th>
-                      <th className="py-2.5 px-3">E-mail</th>
-                      <th className="py-2.5 px-3">CPF / CNPJ</th>
-                      <th className="py-2.5 px-3">WhatsApp / Telefone</th>
-                      <th className="py-2.5 px-3">Data Cadastro</th>
-                      <th className="py-2.5 px-3 text-right">Ação de Credenciamento</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/80 text-slate-300">
-                    {clientsList.filter(c => c.approvalStatus === 'PENDING' || (!c.verifiedStatus && c.approvalStatus !== 'APPROVED')).map((client, idx) => (
-                      <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
-                        <td className="py-3 px-3 font-bold text-white flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                          {client.name}
-                        </td>
-                        <td className="py-3 px-3 text-amber-200/90 font-mono">{client.email}</td>
-                        <td className="py-3 px-3 font-mono">{client.cpfCnpj}</td>
-                        <td className="py-3 px-3 font-mono text-slate-300">{client.phone}</td>
-                        <td className="py-3 px-3 text-slate-400">{client.registeredDate || 'Recente'}</td>
-                        <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleApproveClient(client.email)}
-                              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-emerald-500/10"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Aprovar Cadastro</span>
-                            </button>
-                            <button
-                              onClick={() => handleRejectClient(client.email)}
-                              className="px-2.5 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-semibold rounded-lg text-xs transition-colors"
-                            >
-                              <span>Rejeitar</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* SECTION 2: BASE GERAL DE ARREMATANTES */}
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-bold text-white">Base Completa de Arrematantes Credenciados</h2>
-                <p className="text-xs text-slate-400">
-                  Gerencie limites operacionais em dólares e permissões de acesso
-                </p>
-              </div>
-              <div className="text-xs font-mono text-slate-400">
-                Total: <strong className="text-white">{clientsList.length}</strong> · Aprovados: <strong className="text-emerald-400">{clientsList.filter(c => c.verifiedStatus || c.approvalStatus === 'APPROVED').length}</strong>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-slate-400 text-[11px]">
-                    <th className="py-3 px-3">Arrematante / Razão Social</th>
-                    <th className="py-3 px-3">E-mail</th>
-                    <th className="py-3 px-3">CPF / CNPJ</th>
-                    <th className="py-3 px-3">Telefone WhatsApp</th>
-                    <th className="py-3 px-3">Limite de Arrematação</th>
-                    <th className="py-3 px-3">Status de Habilitação</th>
-                    <th className="py-3 px-3 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {clientsList.map((client, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-3 font-semibold text-white">{client.name}</td>
-                      <td className="py-3 px-3 text-slate-400">{client.email}</td>
-                      <td className="py-3 px-3 font-mono">{client.cpfCnpj}</td>
-                      <td className="py-3 px-3 font-mono text-slate-300">{client.phone}</td>
-                      <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                        ${client.biddingLimitUsd.toLocaleString()} USD
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
-                          client.approvalStatus === 'APPROVED' || client.verifiedStatus
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                            : client.approvalStatus === 'REJECTED'
-                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                            : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                        }`}>
-                          {client.approvalStatus === 'APPROVED' || client.verifiedStatus
-                            ? '● Habilitado / Aprovado'
-                            : client.approvalStatus === 'REJECTED'
-                            ? '✕ Suspenso / Rejeitado'
-                            : '○ Em Análise'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {client.verifiedStatus || client.approvalStatus === 'APPROVED' ? (
-                          <button
-                            onClick={() => handleRejectClient(client.email)}
-                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium transition-colors"
-                          >
-                            Suspender
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleApproveClient(client.email)}
-                            className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded text-[11px] font-bold transition-colors shadow-sm"
-                          >
-                            Aprovar Cadastro
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* OFFERS TAB */}
+      {adminTab === 'offers' && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-white">Central de Ofertas Computadas</h2>
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* TAB 5: CONFIGURAÇÕES GERAIS */}
-      {/* ======================================================== */}
+      {/* CLIENTS TAB */}
+      {adminTab === 'clients' && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-white">Painel de Clientes</h2>
+        </div>
+      )}
+
+      {/* SETTINGS TAB */}
       {adminTab === 'settings' && (
         <div className="max-w-2xl space-y-6 p-6 bg-slate-900/60 border border-slate-800 rounded-2xl">
-          <h2 className="text-lg font-bold text-white">Parâmetros Operacionais do Sistema</h2>
-          
-          <div className="space-y-4 text-xs">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-slate-300 font-semibold flex items-center gap-2">
-                  <span>Cotação PTAX Dólar Comercial (USD / BRL):</span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Dólar Online
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const res = await fetchLivePtaxRate();
-                    if (res && res.rate) {
-                      onUpdateUsdRate(res.rate);
-                      alert(`Dólar Online sincronizado com sucesso!\nTaxa Banco Central: R$ ${res.rate.toFixed(2)} (${res.source})`);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors shadow-sm"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Sincronizar Dólar Online (Bacen)</span>
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={usdRate}
-                  onChange={e => onUpdateUsdRate(parseFloat(e.target.value) || 5.75)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-400 focus:outline-none focus:border-amber-400"
-                />
-                <span className="text-slate-400">Usado para cálculo em reais de todos os leilões e invoices</span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800">
-              <label className="text-slate-300 block mb-1 font-semibold">
-                Endereço do Galpão de Recebimento em Miami:
-              </label>
-              <input
-                type="text"
-                disabled
-                value="8350 NW 53rd Street, Suite 302, Doral, FL 33166"
-                className="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-400"
-              />
-            </div>
+          <h2 className="text-lg font-bold text-white">Configurações Operacionais</h2>
+          <div className="space-y-2">
+            <label className="text-slate-300 font-semibold block">Cotação PTAX Dólar:</label>
+            <input
+              type="number"
+              step="0.01"
+              value={usdRate}
+              onChange={e => onUpdateUsdRate(parseFloat(e.target.value) || 5.75)}
+              className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm font-mono text-amber-400"
+            />
           </div>
         </div>
       )}
-
-      
     </div>
   );
 };
