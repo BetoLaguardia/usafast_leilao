@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   Upload, 
-  FileSpreadsheet, 
   Gavel, 
   Users, 
   Settings, 
