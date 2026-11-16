@@ -1,51 +1,23 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { getDeviceImageUrl, stripLotPrefix } from '../utils/deviceImages';
-import { getEstimatedWholesalePrice } from '../utils/assurantUtils';
-import { fetchLivePtaxRate } from '../utils/ptaxService';
-// Certifique-se de importar o seu cliente supabase se necessário:
-// import { supabase } from '../services/supabaseClient';
+import { supabase } from '../services/supabaseClient';
 import { 
   Upload, 
   FileSpreadsheet, 
   Gavel, 
   Users, 
   Settings, 
-  Plus, 
   Trash2, 
   Edit3, 
   CheckCircle2, 
   Download, 
   AlertCircle, 
-  Search, 
   RefreshCw, 
   DollarSign, 
-  Layers, 
-  Clock, 
-  Eye, 
-  FileText,
-  Sliders,
-  Smartphone,
-  Server,
-  Globe,
-  Code,
-  Copy,
-  Check,
-  TrendingUp,
-  BarChart3,
-  Package,
-  ShieldCheck,
-  Lock,
-  Tablet,
-  Watch,
-  CheckSquare,
-  XCircle,
-  Filter,
-  ChevronLeft,
-  ChevronRight
+  Lock, 
+  TrendingUp 
 } from 'lucide-react';
 import { AuctionLot, GradeType, SystemUser, AdminOffer } from '../types/auction';
-import { apiService, PhpApiConfig } from '../services/apiService';
 
 interface AdminPageProps {
   auctions: AuctionLot[];
@@ -90,14 +62,23 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       setLoadingSaveDb(true);
       setDbSaveStatus('Salvando registros na tabela leiloes_importados...');
 
-      // Integração direta com Supabase:
-      // const { data, error } = await supabase.from('leiloes_importados').insert(dadosParaSalvar);
-      // if (error) throw error;
+      const payload = dadosParaSalvar.map(lot => ({
+        lote_numero: lot.lotNumber,
+        titulo: lot.title,
+        quantidade: lot.quantity,
+        grade: lot.grade,
+        lance_atual_usd: lot.currentBidUsd,
+        updated_at: new Date().toISOString()
+      }));
 
-      await new Promise(resolve => setTimeout(resolve, 800));
+      const { error } = await supabase
+        .from('leiloes_importados')
+        .upsert(payload, { onConflict: 'lote_numero' });
 
-      showNotice(`Sucesso! ${dadosParaSalvar.length} registros salvos no Supabase.`, 'success');
-      setDbSaveStatus(`${dadosParaSalvar.length} itens salvos com sucesso.`);
+      if (error) throw error;
+
+      showNotice(`Sucesso! ${dadosParaSalvar.length} registros salvos na tabela leiloes_importados.`, 'success');
+      setDbSaveStatus(`${dadosParaSalvar.length} itens salvos com sucesso no Supabase.`);
     } catch (err: any) {
       console.error('Erro ao salvar no Supabase:', err?.message || err);
       showNotice(`Erro ao salvar no banco: ${err?.message || err}`, 'error');
@@ -108,11 +89,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   };
 
   // ----------------------------------------------------
-  // EXCEL / CSV UPLOAD ENGINE (VERIZON, ASSURANT, STOCK & CUSTOM)
+  // EXCEL / CSV UPLOAD ENGINE
   // ----------------------------------------------------
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MARKETPLACE_1' | 'MARKETPLACE_2' | 'MARKETPLACE_3' | 'MACBOOKS' | 'GENERIC'>('VERIZON');
+  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MACBOOKS' | 'GENERIC'>('VERIZON');
   const [parsedPreviewRows, setParsedPreviewRows] = useState<any[]>([]);
   const [isLoadingVerizon, setIsLoadingVerizon] = useState(false);
   const [verizonUnitRate, setVerizonUnitRate] = useState<number>(85);
@@ -137,11 +118,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     return 'DNA';
   };
 
-  const parseAuctionEndTime = (endDateVal: any, endTimeVal: any): string => {
-    let d = new Date(Date.now() + 86400000 * 2);
-    return d.toISOString();
-  };
-
   const processVerizonRows = (rawRows: any[], unitRate: number = verizonUnitRate) => {
     const groups = new Map<string, any>();
     rawRows.forEach((r, idx) => {
@@ -164,8 +140,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       ...g,
       mappedGrade: mapVerizonGrade('A'),
       calculatedCurrentBidUsd: g.totalQty * unitRate,
-      calculatedRetailBrl: g.totalQty * unitRate * usdRate * 1.55,
-      parsedEndTime: parseAuctionEndTime(null, null)
+      calculatedRetailBrl: g.totalQty * unitRate * usdRate * 1.55
     }));
     setVerizonGroupedLots(parsed);
     return parsed;
@@ -196,7 +171,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     try {
       const res = await fetch('/assets/aistudio/B-Stock_listings_2026-11-04T1917_f707e53f.csv');
       if (!res.ok) throw new Error('Arquivo Assurant não encontrado.');
-      const text = await res.text();
       setUploadedFileName('B-Stock_listings_Assurant.csv');
       setPresetFormat('ASSURANT');
       showNotice('Feed ASSURANT carregado!');
