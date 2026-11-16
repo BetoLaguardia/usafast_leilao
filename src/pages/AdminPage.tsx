@@ -1,50 +1,22 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { getDeviceImageUrl, stripLotPrefix } from '../utils/deviceImages';
-import { getEstimatedWholesalePrice } from '../utils/assurantUtils';
-import { fetchLivePtaxRate } from '../utils/ptaxService';
-// import { supabase } from '../services/supabaseClient';
 import { 
   Upload, 
   FileSpreadsheet, 
   Gavel, 
   Users, 
   Settings, 
-  Plus, 
   Trash2, 
   Edit3, 
   CheckCircle2, 
   Download, 
   AlertCircle, 
-  Search, 
   RefreshCw, 
   DollarSign, 
-  Layers, 
-  Clock, 
-  Eye, 
-  FileText,
-  Sliders,
-  Smartphone,
-  Server,
-  Globe,
-  Code,
-  Copy,
-  Check,
-  TrendingUp,
-  BarChart3,
-  Package,
-  ShieldCheck,
-  Lock,
-  Tablet,
-  Watch,
-  CheckSquare,
-  XCircle,
-  Filter,
-  ChevronLeft,
-  ChevronRight
+  Lock, 
+  TrendingUp 
 } from 'lucide-react';
 import { AuctionLot, GradeType, SystemUser, AdminOffer } from '../types/auction';
-import { apiService, PhpApiConfig } from '../services/apiService';
 
 interface AdminPageProps {
   auctions: AuctionLot[];
@@ -73,9 +45,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // ----------------------------------------------------
-  // SUPABASE SAVE ENGINE
-  // ----------------------------------------------------
   const [loadingSaveDb, setLoadingSaveDb] = useState(false);
   const [dbSaveStatus, setDbSaveStatus] = useState<string | null>(null);
 
@@ -89,7 +58,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       setLoadingSaveDb(true);
       setDbSaveStatus('Salvando registros na tabela leiloes_importados...');
 
-      // Exemplo com Supabase real:
+      // Exemplo de integração com Supabase:
       // const { error } = await supabase.from('leiloes_importados').insert(dadosParaSalvar);
       // if (error) throw error;
 
@@ -98,7 +67,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       showNotice(`Sucesso! ${dadosParaSalvar.length} registros salvos no Supabase.`, 'success');
       setDbSaveStatus(`${dadosParaSalvar.length} itens salvos com sucesso.`);
     } catch (err: any) {
-      console.error('Erro ao salvar no Supabase:', err?.message || err);
       showNotice(`Erro ao salvar no banco: ${err?.message || err}`, 'error');
       setDbSaveStatus(`Erro: ${err?.message || err}`);
     } finally {
@@ -106,82 +74,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     }
   };
 
-  // ----------------------------------------------------
-  // EXCEL / CSV / UPLOAD STATES
-  // ----------------------------------------------------
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [presetFormat, setPresetFormat] = useState<'VERIZON' | 'ASSURANT' | 'STOCK_APPLE' | 'MACBOOKS' | 'GENERIC'>('VERIZON');
   const [parsedPreviewRows, setParsedPreviewRows] = useState<any[]>([]);
-  const [isLoadingVerizon, setIsLoadingVerizon] = useState(false);
-  const [verizonUnitRate, setVerizonUnitRate] = useState<number>(85);
-  const [verizonGroupedLots, setVerizonGroupedLots] = useState<any[]>([]);
-
-  const cleanLotTitle = (rawTitle: string): string => {
-    if (!rawTitle) return '';
-    return String(rawTitle)
-      .replace(/^Lote\s+Master\s+\d+x\s*/gi, '')
-      .replace(/^Lote\s+Master\s*/gi, '')
-      .replace(/^Lote\s+\d+x\s*/gi, '')
-      .replace(/^Lote\s*/gi, '')
-      .replace(/^\d+x\s*/gi, '')
-      .trim();
-  };
-
-  const mapVerizonGrade = (raw: string): GradeType => {
-    const g = String(raw || '').trim().toUpperCase();
-    if (g.includes('DND') || g.includes('D')) return 'DND';
-    if (g.includes('DNC') || g.includes('C')) return 'DNC';
-    if (g.includes('DNB') || g.includes('B')) return 'DNB';
-    return 'DNA';
-  };
-
-  const processVerizonRows = (rawRows: any[], unitRate: number = verizonUnitRate) => {
-    const groups = new Map<string, any>();
-    rawRows.forEach((r, idx) => {
-      const lotNum = String(r['Lot #'] || r['Lot'] || `VZ-${idx + 1}`).trim();
-      if (!lotNum) return;
-      if (!groups.has(lotNum)) {
-        groups.set(lotNum, {
-          lotNumber: lotNum,
-          title: cleanLotTitle(String(r['Title'] || `iPhone ${lotNum}`)),
-          totalQty: 0,
-          items: []
-        });
-      }
-      const g = groups.get(lotNum)!;
-      const q = parseInt(String(r['Qty'] || 1), 10) || 1;
-      g.totalQty += q;
-      g.items.push(r);
-    });
-    const parsed = Array.from(groups.values()).map(g => ({
-      ...g,
-      mappedGrade: mapVerizonGrade('A'),
-      calculatedCurrentBidUsd: g.totalQty * unitRate,
-      calculatedRetailBrl: g.totalQty * unitRate * usdRate * 1.55
-    }));
-    setVerizonGroupedLots(parsed);
-    return parsed;
-  };
-
-  const handleLoadAttachedVerizonCsv = async () => {
-    setIsLoadingVerizon(true);
-    try {
-      const res = await fetch('/assets/aistudio/verizon_listings_official.csv');
-      if (!res.ok) throw new Error('Arquivo não encontrado.');
-      const text = await res.text();
-      const wb = XLSX.read(text, { type: 'string' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rawRows: any[] = XLSX.utils.sheet_to_json(ws);
-      processVerizonRows(rawRows);
-      setUploadedFileName('Planilha_Oficial_VERIZON.csv');
-      showNotice('Catálogo VERIZON carregado com sucesso!');
-    } catch (err: any) {
-      showNotice(`Erro: ${err?.message}`, 'error');
-    } finally {
-      setIsLoadingVerizon(false);
-    }
-  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,7 +103,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({
     setAdminTab('lots');
   };
 
-  // Gestão de Lotes & Clientes
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
   const [editPriceUsd, setEditPriceUsd] = useState<number>(0);
   const [editGrade, setEditGrade] = useState<GradeType>('Grade A');
@@ -387,47 +281,30 @@ export const AdminPage: React.FC<AdminPageProps> = ({
 
       {/* UPLOAD TAB */}
       {adminTab === 'upload' && (
-        <div className="space-y-6">
-          <div className="p-6 bg-gradient-to-r from-red-950/40 via-slate-900 to-amber-950/30 border border-red-500/40 rounded-2xl space-y-4 shadow-xl">
-            <button
-              type="button"
-              onClick={handleLoadAttachedVerizonCsv}
-              disabled={isLoadingVerizon}
-              className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-2 shadow-lg cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-white" />
-              <span>{isLoadingVerizon ? 'Carregando...' : 'Carregar Catálogo Verizon Oficial'}</span>
-            </button>
-          </div>
-
-          <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
-            <h2 className="text-base font-bold text-white">Subir Planilha Personalizada (Excel / CSV)</h2>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".xlsx, .xls, .csv"
-              className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-400 file:text-slate-950 hover:file:bg-amber-300 cursor-pointer"
-            />
-            {uploadedFileName && (
-              <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-200 flex items-center justify-between">
-                <span>Arquivo selecionado: <strong>{uploadedFileName}</strong></span>
-                <button onClick={handleApplyImport} className="px-3 py-1.5 bg-emerald-500 text-slate-950 font-bold rounded-lg cursor-pointer">
-                  Publicar Lotes
-                </button>
-              </div>
-            )}
-          </div>
+        <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4">
+          <h2 className="text-base font-bold text-white">Subir Planilha Personalizada (Excel / CSV)</h2>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".xlsx, .xls, .csv"
+            className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-400 file:text-slate-950 hover:file:bg-amber-300 cursor-pointer"
+          />
+          {uploadedFileName && (
+            <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl text-xs text-emerald-200 flex items-center justify-between">
+              <span>Arquivo selecionado: <strong>{uploadedFileName}</strong></span>
+              <button onClick={handleApplyImport} className="px-3 py-1.5 bg-emerald-500 text-slate-950 font-bold rounded-lg cursor-pointer">
+                Publicar Lotes
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* LOTS TAB */}
       {adminTab === 'lots' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento ({auctions.length} Lotes)</h2>
-          </div>
-
+          <h2 className="text-lg font-bold text-white">Catálogo de Leilões em Andamento ({auctions.length} Lotes)</h2>
           <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
